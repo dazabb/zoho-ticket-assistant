@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Ticket Assistant Zoho Autofill",
+  "version": "1.0.0",
+  "description": "Auto-fills the Zoho Desk new ticket form using data opened from Ticket Assistant.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://helpcenter.amti.com.ph/*",
+        "https://*.zoho.com/*",
+        "https://*.zoho.com.ph/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["clipboardRead"],
+  "host_permissions": [
+    "https://helpcenter.amti.com.ph/*",
+    "https://*.zoho.com/*",
+    "https://*.zoho.com.ph/*"
+  ]
+}

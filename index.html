@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="library/rte-icon.png" type="image/x-icon">
+  <link rel="stylesheet" href="library/design.css">
+  <title>Untitled - Zoho Desk Ticket Assistant</title>
+</head>
+<body>
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <button class="close-btn" onclick="closeModal()">x</button>
+      </div>
+      <p><label><input type="checkbox" id="toggleLocalCompletion"> Enable Local Autocomplete</label></p>
+      <p><label><input type="checkbox" id="toggleReadOnly"> Enable Read Only</label></p>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="documentationModal">
+    <div class="modal documentation-modal">
+      <div class="modal-header">
+        <h2>Zoho Desk Reference</h2>
+        <button class="close-btn" onclick="closeDocumentationModal()">x</button>
+      </div>
+      <div class="documentation-body" id="documentationBody"></div>
+    </div>
+  </div>
+
+  <div class="diff-modal" id="diffModal">
+    <div class="diff-modal-box">
+      <div class="modal-header">
+        <h2>Content Changes <span id="diffStats" style="font-size: 14px;"></span></h2>
+        <div style="display:flex; align-items:center;">
+          <span id="diffTimestamp" style="font-size: 12px; margin-right: 10px; color: #555;"></span>
+          <button class="restore-button" style="font-size: 14px; margin-right: 10px; padding: 5px 15px;" onclick="restoreFromDiff()">Restore content</button>
+          <button class="close-btn" onclick="closeDiffModal()">x</button>
+        </div>
+      </div>
+      <div class="diff-split-container">
+        <div class="diff-pane" id="diffOld"></div>
+        <div class="diff-pane" id="diffNew"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="clearChatModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Confirm Clear</h2>
+        <button class="close-btn" onclick="closeClearChatModal()">x</button>
+      </div>
+      <div style="padding: 15px 0;">
+        <p>Are you sure you want to clear the entire chat history? This action cannot be undone.</p>
+        <div style="text-align: right; margin-top: 20px;">
+          <button class="cancel-btn" onclick="closeClearChatModal()" style="margin-right: 10px;">Cancel</button>
+          <button id="confirmClearChatBtn">Clear Chat</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="container">
+    <div id="toolbar">
+      <div class="toolbar-brand">
+        <img class="toolbar-logo" src="library/rte-icon.png" alt="Ticket Assistant icon">
+        <span class="toolbar-title">Ticket Assistant</span>
+      </div>
+      <div class="toolbar-actions">
+        <div class="toolbar-group">
+          <button class="toolbar-btn" title="New file" id="newFile" onclick="newFile()">New</button>
+          <button class="toolbar-btn" title="Open file" id="openBtn">Open</button>
+          <button class="toolbar-btn" title="Save file" id="saveBtn">Save</button>
+          <button class="toolbar-btn" title="Download this content" onclick="downloadEditorContent()">Download</button>
+          <button class="toolbar-btn" title="Previous version" id="previousCodeBtn" onclick="previousCode()">Prev</button>
+          <button class="toolbar-btn" title="Next version" id="nextCodeBtn" onclick="nextCode()">Next</button>
+          <button class="toolbar-btn" title="Toggle theme" onclick="toggleTheme()">Theme</button>
+          <button class="toolbar-btn" title="Settings" onclick="openModal()">Settings</button>
+          <button class="toolbar-btn" title="Zoho Desk reference" onclick="openDocumentationModal()">Docs</button>
+        </div>
+        <div class="toolbar-group">
+          <button class="toolbar-btn api-btn" title="Put your API key here" onclick="openApiModal()">API Key</button>
+          <button class="toolbar-btn assistant-btn" title="Zoho Desk assistant" onclick="toggleDisplayChatBotContainer()">Assistant</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="mainArea">
+      <div id="workspacePane">
+        <div id="workspaceHeader">
+          <div class="workspace-copy">
+            <div class="workspace-title">Ticket Workspace</div>
+            <div class="workspace-subtitle">Store incident details, email content, screenshot OCR text, bridge-call notes, and generated Zoho output here.</div>
+          </div>
+          <div class="workspace-actions">
+            <button id="appendWorkspaceBtn" title="Append OCR text to workspace">Append</button>
+            <button id="replaceWorkspaceBtn" title="Replace workspace with OCR text">Replace Workspace</button>
+            <button id="insertOcrBtn" title="Insert OCR text at the cursor">Insert OCR</button>
+            <button id="sendWorkspaceBtn" title="Send workspace content to AI">Send Workspace</button>
+            <button id="createZohoTicketBtn" title="Open Zoho Desk and auto-fill the new ticket form from the workspace">Create Ticket</button>
+          </div>
+        </div>
+        <div id="editor"></div>
+      </div>
+
+      <div id="contextMenu">
+        <div id="explainThis" class="context-menu-item">Generate Zoho autofill</div>
+        <div id="askAI" class="context-menu-item">Ask ticketing AI</div>
+      </div>
+
+      <div id="askAIForm">
+        <div class="ask-ai-popover">
+          <form autocomplete="off" id="askAIFormElement" class="ask-ai-form">
+            <input type="text" id="askAIInput" placeholder="Ask about the selected ticket text" />
+            <button type="submit" id="askAISubmit">Send</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="chatBotContainer">
+        <div class="chat-section">
+          <div class="chat-messages" id="chat-messages"></div>
+          <div class="loading-indicator" id="loading-indicator">
+            AI is thinking <span class="first_dot">.</span><span class="second_dot">.</span><span class="third_dot">.</span>
+          </div>
+
+          <div class="model-container">
+            <div class="model-select-wrap">
+              <span class="model-label">Model</span>
+              <select id="my-select-dropdown">
+                <option value="gemini-flash-lite-latest" selected>gemini-flash-lite-latest</option>
+                <option value="gemini-flash-latest">gemini-flash-latest</option>
+              </select>
+            </div>
+            <button id="clear-chat-btn" title="Clear chat messages">Clear</button>
+          </div>
+
+          <div id="attachmentPanel">
+            <div id="attachmentPanelHeader">
+              <span class="attachment-panel-title">Screenshots <span id="attachmentCount"></span></span>
+              <button id="clearAttachmentsBtn" title="Clear all attachments">Clear all</button>
+            </div>
+            <div id="imageDropZone" title="Paste, drop, or browse for screenshots">
+              <div class="drop-zone-icon">IMG</div>
+              <div class="drop-zone-primary">Paste or drop screenshots here</div>
+              <div class="drop-zone-secondary">You can paste multiple images at once - OCR runs automatically</div>
+              <button id="attachImageBtn" type="button">Browse files</button>
+            </div>
+            <div id="attachmentHint">OCR text is sent to AI automatically - no need to copy it manually.</div>
+            <div id="attachmentTray"></div>
+          </div>
+
+          <div class="chat-input-area">
+            <textarea id="chat-input" class="chat-input" placeholder="Paste ticket details, alerts, email content, screenshot text, or bridge-call notes..."></textarea>
+            <button id="send-button" type="button" class="send-button" aria-label="Send message">Send</button>
+          </div>
+      </div>
+      </div>
+    </div>
+
+    <div id="statusBar" class="statusbardesign"></div>
+  </div>
+
+  <div class="modal-api-overlay" id="modalApi">
+    <div class="modal-api-box">
+      <button class="modal-api-close" onclick="closeApiModal()">x</button>
+      <div class="modal-api-header">
+        Add your Gemini API key.
+      </div>
+      <div class="modal-api-content">
+        <input type="text" name="api" placeholder="Put your API key here" value="" id="APIKey" />
+        <p>Get your API Key here at <a href="https://aistudio.google.com/apikey">https://aistudio.google.com/apikey</a>
+        so the Zoho Desk assistant can generate ticket autofill output and troubleshooting notes.</p>
+      </div>
+    </div>
+  </div>
+  <input type="file" id="imageAttachmentInput" accept="image/*" multiple hidden>
+  <div id="snackbar"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsdiff/5.1.0/diff.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="library/zoho_desk_documentation.js"></script>
+  <script src="library/myGeminiAPIKey.js"></script>
+  <script src="library/init.js"></script>
+  <script src="library/zoho-ui-autofill.js"></script>
+  <script>
+    (function () {
+      const aceScripts = [
+        { src: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.41.0/ace.js" },
+        { src: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.41.0/ext-language_tools.min.js" },
+        {
+          src: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.41.0/ext-searchbox.min.js",
+          fallback: "library/ext-searchbox.js"
+        },
+        { src: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.41.0/ext-statusbar.min.js" },
+        {
+          src: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.41.0/theme-monokai.min.js",
+          fallback: "library/theme-monokai.js"
+        },
+        {
+          src: "https://cdnjs.cloudflare.com/ajax/libs/ace/1.41.0/theme-github_light_default.min.js",
+          fallback: "library/theme-github_light_default.js"
+        }
+      ];
+
+      function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+          const script = document.createElement("script");
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = function () {
+            script.remove();
+            reject(new Error("Failed to load " + src));
+          };
+          document.head.appendChild(script);
+        });
+      }
+
+      async function loadAce() {
+        for (const entry of aceScripts) {
+          try {
+            await loadScript(entry.src);
+          } catch (error) {
+            if (!entry.fallback) {
+              throw error;
+            }
+            await loadScript(entry.fallback);
+          }
+        }
+      }
+
+      function bootEditor() {
+        let currentTheme = typeof window.getStoredTheme === "function"
+          ? window.getStoredTheme()
+          : "ace/theme/github_light_default";
+
+        window.currentTheme = currentTheme;
+        window.editor = ace.edit("editor");
+        editor.setTheme(currentTheme);
+        editor.session.setMode("ace/mode/text");
+        editor.setOptions({
+          enableBasicAutocompletion: false,
+          enableLiveAutocompletion: false,
+          fontSize: "14px",
+        });
+        editor.setValue(window.getInitialWorkspaceContent(), -1);
+
+        const Autocomplete = ace.require("ace/autocomplete").Autocomplete;
+        if (Autocomplete && Autocomplete.prototype && Autocomplete.prototype.commands) {
+          Autocomplete.prototype.commands["Tab"] = null;
+          Autocomplete.prototype.commands["Shift-Tab"] = null;
+        }
+
+        ace.require("ace/ext/statusbar");
+        const StatusBar = ace.require("ace/ext/statusbar").StatusBar;
+        new StatusBar(editor, document.getElementById("statusBar"));
+
+        editor.commands.addCommand({
+          name: "saveToFileSystem",
+          bindKey: { win: "Ctrl-S", mac: "Command-S" },
+          exec: function () {
+            const saveDate = new Date();
+            const currentContent = editor.getValue();
+            saveToFile();
+
+            const diffIndex = recordChange(lastSavedCode, currentContent);
+
+            if (lastSavedCode !== currentContent) {
+              lastSavedCode = currentContent;
+            }
+
+            if (diffIndex !== null) {
+              addMessage("I made some updates", "user");
+              addMessage("Here are the latest workspace content changes.", "ai", {
+                footerText: `Time Edited: ${saveDate.toLocaleString()}`,
+                diffIndex,
+              });
+            }
+          },
+          readOnly: false
+        });
+
+        editor.setShowPrintMargin(false);
+        editor.getSession().setUseSoftTabs(false);
+        document.body.classList.toggle("theme-dark", currentTheme === "ace/theme/monokai");
+
+        if (typeof window.initializeTicketAssistantRuntime === "function") {
+          window.initializeTicketAssistantRuntime();
+        }
+
+        const contextMenu = document.getElementById("contextMenu");
+        const askAIForm = document.getElementById("askAIForm");
+        const askAIInput = document.getElementById("askAIInput");
+        const explainThis = document.getElementById("explainThis");
+        const askAI = document.getElementById("askAI");
+        const chatInput = document.getElementById("chat-input");
+
+        let latestSelectedText = "";
+        let menuX = 0;
+        let menuY = 0;
+
+        editor.getSelection().on("changeSelection", function () {
+          latestSelectedText = editor.getSelectedText();
+        });
+
+        editor.container.addEventListener("contextmenu", function (e) {
+          e.preventDefault();
+
+          if (latestSelectedText.trim() !== "") {
+            menuX = e.pageX;
+            menuY = e.pageY;
+
+            contextMenu.style.left = `${menuX}px`;
+            contextMenu.style.top = `${menuY}px`;
+            contextMenu.style.display = "block";
+            askAIForm.style.display = "none";
+          }
+        });
+
+        explainThis.addEventListener("click", function (e) {
+          e.stopPropagation();
+          chatInput.value = `Generate the Zoho Desk ticket auto-fill from this selected text:\n${latestSelectedText}`;
+          sendMessage();
+          contextMenu.style.display = "none";
+          askAIForm.style.display = "none";
+        });
+
+        askAI.addEventListener("click", function (e) {
+          e.stopPropagation();
+          contextMenu.style.display = "none";
+          askAIForm.style.left = `${menuX}px`;
+          askAIForm.style.top = `${menuY}px`;
+          askAIForm.style.display = "block";
+          askAIInput.focus();
+        });
+
+        askAIForm.addEventListener("click", function (e) {
+          e.stopPropagation();
+        });
+
+        document.getElementById("askAIFormElement").addEventListener("submit", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const question = askAIInput.value.trim();
+          if (question !== "") {
+            chatInput.value = `${question}\n\nSelected ticket text:\n${latestSelectedText}`;
+            sendMessage();
+            askAIForm.style.display = "none";
+          }
+
+          askAIInput.value = "";
+        });
+
+        document.addEventListener("click", function () {
+          contextMenu.style.display = "none";
+          askAIForm.style.display = "none";
+          askAIInput.value = "";
+        });
+      }
+
+      loadAce().then(bootEditor).catch(function (error) {
+        if (typeof window.showSnackbar === "function") {
+          window.showSnackbar("Ticket Assistant could not load the Ace editor. Check your network connection and reload.");
+        }
+        const statusBar = document.getElementById("statusBar");
+        if (statusBar) {
+          statusBar.textContent = error.message;
+        }
+        console.error(error);
+      });
+    }());
+  </script>
+</body>
+</html>
