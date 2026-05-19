@@ -5,9 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="library/rte-icon.png" type="image/x-icon">
   <link rel="stylesheet" href="library/design.css">
-  <title>Untitled - Zoho Desk Ticket Assistant</title>
+  <title>Untitled - Zoho Desk Ticket Assistant BETA</title>
 </head>
 <body>
+  <div class="modal-overlay profile-overlay" id="profileOverlay">
+    <div class="profile-picker">
+      <div class="profile-picker-header">
+        <h1>Who's using Ticket Assistant?</h1>
+        <p>Choose a profile to continue. Your named profile keeps its own chats, theme, and workspace in this browser.</p>
+      </div>
+      <div class="profile-grid" id="profileGrid"></div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modalOverlay">
     <div class="modal">
       <div class="modal-header">
@@ -66,18 +76,24 @@
     <div id="toolbar">
       <div class="toolbar-brand">
         <img class="toolbar-logo" src="library/rte-icon.png" alt="Ticket Assistant icon">
-        <span class="toolbar-title">Ticket Assistant</span>
+        <span class="toolbar-title">Ticket Assistant BETA</span>
       </div>
       <div class="toolbar-actions">
         <div class="toolbar-group">
-          <button class="toolbar-btn" title="New file" id="newFile" onclick="newFile()">New</button>
-          <button class="toolbar-btn" title="Open file" id="openBtn">Open</button>
-          <button class="toolbar-btn" title="Save file" id="saveBtn">Save</button>
-          <button class="toolbar-btn" title="Download this content" onclick="downloadEditorContent()">Download</button>
-          <button class="toolbar-btn" title="Previous version" id="previousCodeBtn" onclick="previousCode()">Prev</button>
-          <button class="toolbar-btn" title="Next version" id="nextCodeBtn" onclick="nextCode()">Next</button>
+          <div class="profile-status" id="profileStatus" hidden>
+            <span class="profile-status-label">Profile</span>
+            <span class="profile-status-name" id="activeProfileName">Guest</span>
+            <button class="toolbar-btn profile-logout-btn" id="logoutProfileBtn" title="Log out of the current profile">Logout Profile</button>
+          </div>
+        </div>
+        <div class="toolbar-group">
+          <div class="session-controls" title="Saved chat sessions">
+            <select id="chatSessionSelect" aria-label="Saved chat sessions"></select>
+            <button class="toolbar-btn" title="Create a new chat session" id="newChatSessionBtn">New</button>
+            <button class="toolbar-btn" title="Rename the current chat session" id="renameChatSessionBtn">Rename</button>
+            <button class="toolbar-btn" title="Delete the current chat session" id="deleteChatSessionBtn">Delete</button>
+          </div>
           <button class="toolbar-btn" title="Toggle theme" onclick="toggleTheme()">Theme</button>
-          <button class="toolbar-btn" title="Settings" onclick="openModal()">Settings</button>
           <button class="toolbar-btn" title="Zoho Desk reference" onclick="openDocumentationModal()">Docs</button>
         </div>
         <div class="toolbar-group">
@@ -92,13 +108,9 @@
         <div id="workspaceHeader">
           <div class="workspace-copy">
             <div class="workspace-title">Ticket Workspace</div>
-            <div class="workspace-subtitle">Store incident details, email content, screenshot OCR text, bridge-call notes, and generated Zoho output here.</div>
+            <div class="workspace-subtitle">Store incident details, email content, images, bridge-call notes, and generated Zoho output here.</div>
           </div>
           <div class="workspace-actions">
-            <button id="appendWorkspaceBtn" title="Append OCR text to workspace">Append</button>
-            <button id="replaceWorkspaceBtn" title="Replace workspace with OCR text">Replace Workspace</button>
-            <button id="insertOcrBtn" title="Insert OCR text at the cursor">Insert OCR</button>
-            <button id="sendWorkspaceBtn" title="Send workspace content to AI">Send Workspace</button>
             <button id="createZohoTicketBtn" title="Open Zoho Desk and auto-fill the new ticket form from the workspace">Create Ticket</button>
           </div>
         </div>
@@ -148,12 +160,11 @@
               <div class="drop-zone-secondary">You can paste multiple images at once - OCR runs automatically</div>
               <button id="attachImageBtn" type="button">Browse files</button>
             </div>
-            <div id="attachmentHint">OCR text is sent to AI automatically - no need to copy it manually.</div>
             <div id="attachmentTray"></div>
           </div>
 
           <div class="chat-input-area">
-            <textarea id="chat-input" class="chat-input" placeholder="Paste ticket details, alerts, email content, screenshot text, or bridge-call notes..."></textarea>
+            <textarea id="chat-input" class="chat-input" placeholder="Paste ticket details, alerts, email content, images, or bridge-call notes..."></textarea>
             <button id="send-button" type="button" class="send-button" aria-label="Send message">Send</button>
           </div>
       </div>
@@ -171,7 +182,7 @@
       </div>
       <div class="modal-api-content">
         <input type="text" name="api" placeholder="Put your API key here" value="" id="APIKey" />
-        <p>Get your API Key here at <a href="https://aistudio.google.com/apikey">https://aistudio.google.com/apikey</a>
+        <p>Get your API Key here at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">https://aistudio.google.com/apikey</a>
         so the Zoho Desk assistant can generate ticket autofill output and troubleshooting notes.</p>
       </div>
     </div>

@@ -3,7 +3,11 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "2026-05-19-r10";
+  const SCRIPT_REVISION = "2026-05-19-r13";
+  const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
+  const ACTION_AUTOFILL = "autofillZohoTicket";
+  const BRIDGE_REQUEST_TYPE = "zta:bridge-request";
+  const BRIDGE_RESPONSE_TYPE = "zta:bridge-response";
   const SKIP_AUTOFILL_LABELS = new Set([
     "Department",
     "Account Name",
@@ -207,15 +211,40 @@
     "Support Level": {
       kind: "dropdown",
       selectors: [
+        '[data-id="cf_support_level"]',
+        '[data-test-id="cf_support_level"]',
+        '[data-id="cf_support_level"] [role="combobox"]',
+        '[data-test-id="cf_support_level"] [role="combobox"]',
         'input[data-id="cf_support_level_textBox"]',
-        'input[data-test-id="cf_support_level_textBox"]'
+        'input[data-test-id="cf_support_level_textBox"]',
+        '[data-id="cf_support_level"] input',
+        '[data-test-id="cf_support_level"] input',
+        '[data-id="cf_support_level"] button',
+        '[data-test-id="cf_support_level"] button',
+        '[data-id="cf_support_level"] [data-test-id$="_downIcon"]',
+        '[data-test-id="cf_support_level"] [data-test-id$="_downIcon"]',
+        '[aria-label*="Support Level" i]',
+        '[role="combobox"][aria-label*="Support Level" i]'
       ]
     },
     "Support Agent": {
       kind: "dropdown",
       selectors: [
+        '[data-id="support_agent"]',
+        '[data-test-id="support_agent"]',
+        '[data-id="support_agent"] [role="combobox"]',
+        '[data-test-id="support_agent"] [role="combobox"]',
         'input[data-id="support_agent_textBox"]',
-        'input[aria-labelledby="Support Agent"]'
+        'input[data-test-id="support_agent_textBox"]',
+        '[data-id="support_agent"] input',
+        '[data-test-id="support_agent"] input',
+        '[data-id="support_agent"] button',
+        '[data-test-id="support_agent"] button',
+        '[data-id="support_agent"] [data-test-id$="_downIcon"]',
+        '[data-test-id="support_agent"] [data-test-id$="_downIcon"]',
+        'input[aria-labelledby="Support Agent"]',
+        '[aria-label*="Support Agent" i]',
+        '[role="combobox"][aria-label*="Support Agent" i]'
       ]
     },
     "Priority": {
@@ -348,16 +377,85 @@
   const DESCRIPTION_RETRY_LABEL = "Description";
   const DESCRIPTION_FALLBACK_LABEL = "Issue Description";
 
-  const READINESS_REQUIRED_DELAY_MS = 1500;
-  const READINESS_POLL_MS = 500;
-  const FIELD_RETRY_ATTEMPTS = 5;
-  const FIELD_RETRY_DELAY_MS = 600;
+  const READINESS_REQUIRED_DELAY_MS = 250;
+  const READINESS_POLL_MS = 150;
+  const FIELD_RETRY_ATTEMPTS = 4;
+  const FIELD_RETRY_DELAY_MS = 250;
+  const TEXT_INTERACTION_DELAY_MS = 20;
+  const TEXT_POST_FILL_DELAY_MS = 40;
+  const RICHTEXT_POST_FILL_DELAY_MS = 120;
+  const DROPDOWN_OPEN_DELAY_MS = 220;
+  const DROPDOWN_SEARCH_DELAY_MS = 250;
+  const DROPDOWN_POST_SELECT_DELAY_MS = 120;
+  const FIELD_POST_FILL_DELAY_MS = {
+    text: 40,
+    richtext: 120,
+    dropdown: 120
+  };
   const EXACT_DEFINITION_CONTROLS = new WeakSet();
   let autofillRunning = false;
   let pendingPayload = null;
+  let queuedPayload = null;
   let autofillAutoStarted = false;
+  let runtimeListenerInstalled = false;
+  let bridgeInstalled = false;
+  let panelAutoCloseTimer = 0;
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function isZohoTicketPage() {
+    const host = String(location.hostname || "").toLowerCase();
+    return host === "helpcenter.amti.com.ph"
+      || host.endsWith(".zoho.com")
+      || host.endsWith(".zoho.com.ph");
+  }
+
+  function installAssistantBridge() {
+    if (bridgeInstalled || !chrome || !chrome.runtime || !window || !window.addEventListener) return;
+    bridgeInstalled = true;
+
+    window.addEventListener("message", (event) => {
+      const data = event && event.data;
+      if (event.source !== window || !data || data.type !== BRIDGE_REQUEST_TYPE || !data.requestId || !data.action) {
+        return;
+      }
+
+      chrome.runtime.sendMessage({
+        type: data.action,
+        ...(data.data || {})
+      }, (response) => {
+        const runtimeError = chrome.runtime.lastError;
+        window.postMessage({
+          type: BRIDGE_RESPONSE_TYPE,
+          requestId: data.requestId,
+          ok: !runtimeError && !!(response && response.ok),
+          response: response || null,
+          error: runtimeError ? runtimeError.message : response && response.error
+        }, "*");
+      });
+    });
+  }
+
+  function getFieldSpeedClass(label, kind) {
+    if (kind === "richtext" || label === DESCRIPTION_RETRY_LABEL) return "richtext";
+    if (kind === "dropdown" || DROPDOWN_FIELD_LABELS.has(label)) return "dropdown";
+    return "text";
+  }
+
+  function getRetryPolicy(label, kind) {
+    const speedClass = getFieldSpeedClass(label, kind);
+    if (speedClass === "text") {
+      return { attempts: 2, delayMs: 120 };
+    }
+    if (speedClass === "richtext") {
+      return { attempts: FIELD_RETRY_ATTEMPTS + 1, delayMs: FIELD_RETRY_DELAY_MS };
+    }
+    return { attempts: FIELD_RETRY_ATTEMPTS, delayMs: FIELD_RETRY_DELAY_MS };
+  }
+
+  function getPostFillDelay(label, kind) {
+    return FIELD_POST_FILL_DELAY_MS[getFieldSpeedClass(label, kind)] || 0;
+  }
 
   function decodePayload() {
     const rawHash = window.location.hash || "";
@@ -386,8 +484,37 @@
     }
   }
 
+  function acceptPayload(payload, source) {
+    if (!payload || !payload.fields || !isZohoTicketPage()) return { ok: false, reason: "not a Zoho page" };
+
+    pendingPayload = payload;
+    ensurePanel();
+    panel(`Payload received from ${source || "extension"}. Running script revision ${SCRIPT_REVISION}.`, "info");
+    setPanelStatus("Payload loaded. Autofill will begin automatically after the Zoho form is ready.", "info");
+
+    if (autofillRunning) {
+      queuedPayload = payload;
+      panel("Autofill is already running. Queued the latest payload to run next.", "info");
+      return { ok: true, queued: true };
+    }
+
+    queuedPayload = null;
+    setTimeout(() => {
+      if (!autofillRunning && pendingPayload === payload) {
+        runAutofill(payload);
+      }
+    }, 0);
+    return { ok: true, queued: false };
+  }
+
+  function stripDiacritics(text) {
+    return String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
+
   function normalize(text) {
     return String(text || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
       .replace(/\*/g, "")
       .replace(/\u00a0/g, " ")
       .replace(/[\s\n\r\t]+/g, " ")
@@ -398,6 +525,10 @@
 
   function looseNormalize(text) {
     return normalize(text).replace(/[^a-z0-9]+/g, "");
+  }
+
+  function normalizeHumanName(text) {
+    return stripDiacritics(text).replace(/\u00a0/g, " ").replace(/[\s\n\r\t]+/g, " ").trim();
   }
 
   function isVisible(el) {
@@ -412,7 +543,55 @@
     return String(el.innerText || el.textContent || el.getAttribute("aria-label") || el.getAttribute("title") || "").trim();
   }
 
+  function describeElement(el) {
+    if (!el) return "null";
+    const tag = String(el.tagName || "node").toLowerCase();
+    const dataId = el.getAttribute && el.getAttribute("data-id");
+    const dataTestId = el.getAttribute && el.getAttribute("data-test-id");
+    const role = el.getAttribute && el.getAttribute("role");
+    const ariaLabel = el.getAttribute && el.getAttribute("aria-label");
+    const text = visibleText(el).replace(/\s+/g, " ").slice(0, 80);
+    return [
+      tag,
+      dataId ? `data-id=${dataId}` : "",
+      dataTestId ? `data-test-id=${dataTestId}` : "",
+      role ? `role=${role}` : "",
+      ariaLabel ? `aria-label=${ariaLabel}` : "",
+      text ? `text=${text}` : ""
+    ].filter(Boolean).join(" | ");
+  }
+
+  function fieldValueAliases(label, value) {
+    const raw = String(value || "").trim();
+    const aliases = [raw];
+    if (label === "Support Level" && normalize(raw) === normalize("Level 1.5")) {
+      aliases.unshift("Level1.5");
+      aliases.push("1.5");
+    }
+    const unique = [];
+    for (const item of aliases) {
+      const normalizedItem = String(item || "").trim();
+      if (normalizedItem && !unique.includes(normalizedItem)) unique.push(normalizedItem);
+    }
+    return unique;
+  }
+
+  function valueMatchesCandidate(text, candidate) {
+    const normalizedText = normalize(text);
+    const normalizedCandidate = normalize(candidate);
+    const looseText = looseNormalize(text);
+    const looseCandidate = looseNormalize(candidate);
+    return normalizedText === normalizedCandidate
+      || looseText === looseCandidate
+      || normalizedText.includes(normalizedCandidate)
+      || normalizedCandidate.includes(normalizedText);
+  }
+
   function ensurePanel() {
+    if (panelAutoCloseTimer) {
+      clearTimeout(panelAutoCloseTimer);
+      panelAutoCloseTimer = 0;
+    }
     let box = document.getElementById(PANEL_ID);
     if (!box) {
       box = document.createElement("div");
@@ -462,6 +641,19 @@
     div.textContent = message;
     log.appendChild(div);
     box.scrollTop = box.scrollHeight;
+  }
+
+  function schedulePanelAutoClose(delayMs) {
+    if (panelAutoCloseTimer) {
+      clearTimeout(panelAutoCloseTimer);
+    }
+    panelAutoCloseTimer = window.setTimeout(() => {
+      const box = document.getElementById(PANEL_ID);
+      if (box) {
+        box.remove();
+      }
+      panelAutoCloseTimer = 0;
+    }, delayMs);
   }
 
   function firstVisible(selectors) {
@@ -644,6 +836,39 @@
     return null;
   }
 
+  function findSectionRoot(labelEl) {
+    const ancestors = ancestorList(labelEl);
+    return ancestors.find((node) => {
+      const text = normalize(visibleText(node));
+      return text.includes(normalize("Additional Information")) || text.includes(normalize("Support Agent")) || text.includes(normalize("Support Level"));
+    }) || null;
+  }
+
+  function findControlInSection(label, labelEl) {
+    const sectionRoot = findSectionRoot(labelEl);
+    if (!sectionRoot) return null;
+
+    const candidates = controlCandidates(sectionRoot)
+      .filter((el) => el !== labelEl)
+      .filter((el) => !el.closest(`#${PANEL_ID}`));
+    if (!candidates.length) return null;
+
+    const labelRect = labelEl.getBoundingClientRect();
+    candidates.sort((a, b) => {
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      const scoreA = Math.abs(ar.top - labelRect.bottom) + Math.abs(ar.left - labelRect.left);
+      const scoreB = Math.abs(br.top - labelRect.bottom) + Math.abs(br.left - labelRect.left);
+      return scoreA - scoreB;
+    });
+
+    const match = candidates[0] || null;
+    if (match) {
+      panel(`Resolved ${label} from section fallback: ${describeElement(match)}`, "info");
+    }
+    return match;
+  }
+
   function resolveDefinitionControl(label) {
     const definition = FIELD_DEFINITIONS[label];
     if (!definition) return null;
@@ -656,6 +881,9 @@
         const resolved = extractInteractiveControl(candidate);
         if (resolved && isVisible(resolved)) {
           EXACT_DEFINITION_CONTROLS.add(resolved);
+          if (label === "Support Level" || label === "Support Agent") {
+            panel(`Resolved ${label} using selector ${selector}: ${describeElement(resolved)}`, "info");
+          }
           return resolved;
         }
       }
@@ -667,11 +895,21 @@
   function findControl(label) {
     const direct = resolveDefinitionControl(label);
     if (direct) return direct;
-    if (STRICT_DEFINITION_ONLY_LABELS.has(label)) return null;
+    if (STRICT_DEFINITION_ONLY_LABELS.has(label) && label !== "Support Level" && label !== "Support Agent") return null;
 
     const labelEl = findLabelElement(label);
     if (!labelEl) return null;
-    return findControlFromLabel(labelEl);
+    const fromLabel = findControlFromLabel(labelEl);
+    if (fromLabel) {
+      if (label === "Support Level" || label === "Support Agent") {
+        panel(`Resolved ${label} from label fallback: ${describeElement(fromLabel)}`, "info");
+      }
+      return fromLabel;
+    }
+    if (label === "Support Level" || label === "Support Agent") {
+      return findControlInSection(label, labelEl);
+    }
+    return null;
   }
 
   function setNativeValue(el, value) {
@@ -806,7 +1044,7 @@
     interactive.focus();
     setNativeValue(interactive, "");
     dispatchInput(interactive);
-    await sleep(100);
+    await sleep(TEXT_POST_FILL_DELAY_MS);
     return { ok: String(interactive.value || "") === "", cleared: true };
   }
 
@@ -909,12 +1147,12 @@
 
     if (control.matches && control.matches("textarea, input")) {
       if (!await setTextLike(control, value)) return false;
-      await sleep(350);
+      await sleep(RICHTEXT_POST_FILL_DELAY_MS);
 
       const upgraded = findControl(DESCRIPTION_RETRY_LABEL);
       if (upgraded && upgraded !== control && getEditorBody(upgraded)) {
         if (!await setTextLike(upgraded, value)) return false;
-        await sleep(250);
+        await sleep(RICHTEXT_POST_FILL_DELAY_MS);
         return richTextContainsValue(upgraded, value);
       }
 
@@ -922,14 +1160,14 @@
     }
 
     if (!await setTextLike(control, value)) return false;
-    await sleep(250);
+    await sleep(RICHTEXT_POST_FILL_DELAY_MS);
     return richTextContainsValue(control, value);
   }
 
   async function setRichTextLike(control, value) {
     if (!control || !String(value || "").trim()) return false;
     control.scrollIntoView({ block: "center", inline: "nearest" });
-    await sleep(80);
+    await sleep(TEXT_INTERACTION_DELAY_MS);
 
     const body = getEditorBody(control);
     if (!body) return false;
@@ -944,7 +1182,7 @@
   async function setTextLike(control, value) {
     if (!control || !String(value || "").trim()) return false;
     control.scrollIntoView({ block: "center", inline: "nearest" });
-    await sleep(80);
+    await sleep(TEXT_INTERACTION_DELAY_MS);
 
     if (await setRichTextLike(control, value)) return true;
 
@@ -976,10 +1214,9 @@
     return false;
   }
 
-  function findVisibleOptions(value, root) {
+  function findVisibleOptions(value, root, label) {
     const scope = root || document;
-    const target = normalize(value);
-    const looseTarget = looseNormalize(value);
+    const aliases = fieldValueAliases(label, value);
     const prioritySelectors = [
       "lyte-drop-item",
       "[role='option']",
@@ -994,33 +1231,48 @@
       const matches = Array.from(scope.querySelectorAll(selector))
         .filter(isVisible)
         .filter((el) => !el.closest(`#${PANEL_ID}`))
-        .filter((el) => {
-          const text = normalize(visibleText(el));
-          const loose = looseNormalize(visibleText(el));
-          return text === target || loose === looseTarget || text.includes(target) || target.includes(text);
-        });
-      if (matches.length) return matches;
+        .filter((el) => aliases.some((candidate) => valueMatchesCandidate(visibleText(el), candidate)));
+      if (matches.length) {
+        return matches.sort((a, b) => optionMatchScore(b, value, label) - optionMatchScore(a, value, label));
+      }
     }
 
     return Array.from(scope.querySelectorAll("li, div, span, td, a"))
       .filter(isVisible)
       .filter((el) => !el.closest(`#${PANEL_ID}`))
       .filter((el) => visibleText(el).length <= Math.max(140, String(value).length + 60))
-      .filter((el) => {
-        const text = normalize(visibleText(el));
-        const loose = looseNormalize(visibleText(el));
-        return text === target || loose === looseTarget || text.includes(target) || target.includes(text);
-      });
+      .filter((el) => aliases.some((candidate) => valueMatchesCandidate(visibleText(el), candidate)))
+      .sort((a, b) => optionMatchScore(b, value, label) - optionMatchScore(a, value, label));
   }
 
-  async function clickBestOption(value, roots) {
+  function optionMatchScore(optionEl, value, label) {
+    const text = visibleText(optionEl);
+    const aliases = fieldValueAliases(label, value);
+    const dataValue = optionEl.getAttribute && optionEl.getAttribute("data-value");
+    for (const candidate of aliases) {
+      const normalizedText = normalize(text);
+      const normalizedCandidate = normalize(candidate);
+      const looseText = looseNormalize(text);
+      const looseCandidate = looseNormalize(candidate);
+      const normalizedDataValue = normalize(dataValue || "");
+      if (normalizedText === normalizedCandidate) return 600;
+      if (looseText === looseCandidate) return 500;
+      if (normalizedDataValue && normalizedDataValue === normalizedCandidate) return 400;
+      if (normalizedText.startsWith(normalizedCandidate)) return 300;
+      if (normalizedText.includes(normalizedCandidate)) return 200;
+      if (normalizedCandidate.includes(normalizedText)) return 100;
+    }
+    return 0;
+  }
+
+  async function clickBestOption(value, roots, label) {
     const scopes = (roots && roots.length ? roots : [document]).filter(Boolean);
     for (const scope of scopes) {
-      const options = findVisibleOptions(value, scope);
+      const options = findVisibleOptions(value, scope, label);
       if (!options.length) continue;
       options[0].scrollIntoView({ block: "center", inline: "nearest" });
       options[0].click();
-      await sleep(220);
+      await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
       return true;
     }
     return false;
@@ -1045,8 +1297,8 @@
     return inputs[0] || null;
   }
 
-  async function clickOptionByDataValue(value, roots) {
-    const target = normalize(value);
+  async function clickOptionByDataValue(value, roots, label) {
+    const aliases = fieldValueAliases(label, value);
     const scopes = (roots && roots.length ? roots : [document]).filter(Boolean);
 
     for (const scope of scopes) {
@@ -1055,26 +1307,36 @@
         .filter((el) => !el.closest(`#${PANEL_ID}`))
         .find((el) => {
           const dataValue = normalize(el.getAttribute("data-value") || "");
-          return dataValue === target || dataValue.includes(target);
+          return aliases.some((candidate) => {
+            const normalizedCandidate = normalize(candidate);
+            const looseCandidate = looseNormalize(candidate);
+            return dataValue === normalizedCandidate
+              || dataValue.includes(normalizedCandidate)
+              || looseNormalize(dataValue) === looseCandidate;
+          });
         });
       if (!match) continue;
       match.scrollIntoView({ block: "center", inline: "nearest" });
       match.click();
-      await sleep(300);
+      await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
       return true;
     }
 
     return false;
   }
 
-  function verifyDropdownSelection(control, value, popupRoot) {
-    const target = normalize(value);
+  function verifyDropdownSelection(control, value, popupRoot, label) {
+    const aliases = fieldValueAliases(label, value);
     const controlText = normalize(controlTextSnapshot(control));
-    if (target === normalize("Sandz Support L1.5")) {
-      if (controlText.includes(target) && !controlText.includes(normalize("unassigned"))) {
+    if (aliases.some((candidate) => normalize(candidate) === normalize("Sandz Support L1.5"))) {
+      if (aliases.some((candidate) => controlText.includes(normalize(candidate))) && !controlText.includes(normalize("unassigned"))) {
         return true;
       }
-    } else if (controlText && controlText !== "-none-" && (controlText === target || controlText.includes(target) || target.includes(controlText))) {
+    } else if (label === "Support Level") {
+      if (aliases.some((candidate) => valueMatchesCandidate(controlText, candidate))) {
+        return true;
+      }
+    } else if (controlText && controlText !== "-none-" && aliases.some((candidate) => valueMatchesCandidate(controlText, candidate))) {
       return true;
     }
 
@@ -1085,11 +1347,11 @@
       ))
         .filter(isVisible)
         .find((el) => {
-          const text = normalize(visibleText(el));
-          if (target === normalize("Sandz Support L1.5")) {
-            return text.includes(target);
+          const text = visibleText(el);
+          if (aliases.some((candidate) => normalize(candidate) === normalize("Sandz Support L1.5"))) {
+            return aliases.some((candidate) => normalize(text).includes(normalize(candidate)));
           }
-          return text === target || text.includes(target) || target.includes(text);
+          return aliases.some((candidate) => valueMatchesCandidate(text, candidate));
         });
       if (selected) return true;
     }
@@ -1097,7 +1359,7 @@
     let node = control;
     for (let i = 0; node && i < 4; i += 1) {
       const text = normalize(controlTextSnapshot(node));
-      if (text && text !== "-none-" && (text === target || text.includes(target) || target.includes(text))) {
+      if (text && text !== "-none-" && aliases.some((candidate) => valueMatchesCandidate(text, candidate))) {
         return true;
       }
       node = node.parentElement;
@@ -1106,30 +1368,55 @@
     return false;
   }
 
-  async function navigateToOption(control, value, popupRoot, maxSteps = 20) {
-    const target = normalize(value);
+  async function navigateToOption(control, value, popupRoot, label, maxSteps = 20) {
+    const aliases = fieldValueAliases(label, value);
     for (let i = 0; i < maxSteps; i += 1) {
       control.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", code: "ArrowDown", bubbles: true }));
-      await sleep(80);
+      await sleep(TEXT_INTERACTION_DELAY_MS);
 
       const focused = document.activeElement;
-      if (focused && normalize(visibleText(focused)).includes(target)) {
+      if (focused && aliases.some((candidate) => valueMatchesCandidate(visibleText(focused), candidate))) {
         focused.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", bubbles: true }));
         if (typeof focused.click === "function") focused.click();
-        await sleep(200);
-        if (verifyDropdownSelection(control, value, popupRoot)) return true;
+        await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
+        if (verifyDropdownSelection(control, value, popupRoot, label)) return true;
       }
 
       const highlighted = (popupRoot || document).querySelector(
         "lyte-drop-item[data-selected='true'], [class*='highlighted' i][role='option'], [aria-selected='true']"
       );
-      if (highlighted && normalize(visibleText(highlighted)).includes(target)) {
+      if (highlighted && aliases.some((candidate) => valueMatchesCandidate(visibleText(highlighted), candidate))) {
         highlighted.click();
-        await sleep(200);
-        if (verifyDropdownSelection(control, value, popupRoot)) return true;
+        await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
+        if (verifyDropdownSelection(control, value, popupRoot, label)) return true;
       }
     }
     return false;
+  }
+
+  function sampleVisibleOptions(root, limit = 6) {
+    const scope = root || document;
+    return Array.from(scope.querySelectorAll("lyte-drop-item, [role='option'], [role='menuitem'], li, div"))
+      .filter(isVisible)
+      .filter((el) => !el.closest(`#${PANEL_ID}`))
+      .map((el) => visibleText(el).replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .filter((text, index, list) => list.indexOf(text) === index)
+      .slice(0, limit);
+  }
+
+  function dropdownFailureReason(trigger, value, popupRoot, label) {
+    const currentValue = controlTextSnapshot(trigger);
+    const popupValue = popupRoot ? visibleText(popupRoot).slice(0, 140) : "";
+    const options = sampleVisibleOptions(popupRoot || document).join(" | ");
+    const aliases = fieldValueAliases(label, value).join(" / ");
+    if (currentValue && normalize(currentValue) !== "-none-") {
+      return `dropdown option not found (aliases: ${aliases}; current: ${currentValue}${options ? `; options: ${options}` : ""})`;
+    }
+    if (popupValue) {
+      return `dropdown option not found (aliases: ${aliases}; popup: ${popupValue}${options ? `; options: ${options}` : ""})`;
+    }
+    return `dropdown option not found (aliases: ${aliases}${options ? `; options: ${options}` : ""})`;
   }
 
   async function setDropdownLike(control, value, options) {
@@ -1140,62 +1427,97 @@
     if (!isValidResolvedControl(label, trigger)) {
       return { ok: false, reason: "resolved control rejected" };
     }
+    if (label === "Support Level" || label === "Support Agent") {
+      panel(`Preparing ${label}: ${describeElement(trigger)}`, "info");
+    }
     trigger.scrollIntoView({ block: "center", inline: "nearest" });
-    await sleep(120);
+    await sleep(TEXT_POST_FILL_DELAY_MS);
 
     fireMouseEvents(trigger);
     if (typeof trigger.focus === "function") trigger.focus();
-    await sleep(600);
+    await sleep(DROPDOWN_OPEN_DELAY_MS);
 
     let popupRoot = findActiveDropdownPopup(trigger);
     if (strictMode && !popupRoot) {
       return { ok: false, reason: "dropdown popup not detected" };
+    }
+    if (label === "Support Level" || label === "Support Agent") {
+      panel(`${label} popup ${popupRoot ? "detected" : "not detected"}${popupRoot ? `: ${describeElement(popupRoot)}` : ""}`, popupRoot ? "info" : "error");
     }
     const searchInput = strictMode
       ? findPopupSearchInput(popupRoot, trigger)
       : (findNearestNewInput(trigger, popupRoot) || findNearestNewInput(trigger));
     if (searchInput) {
       searchInput.focus();
-      setNativeValue(searchInput, value);
-      fireInputEvents(searchInput);
-      await sleep(700);
-      popupRoot = findActiveDropdownPopup(trigger) || popupRoot;
-      if (await clickBestOption(value, [popupRoot, document])) {
-        await sleep(250);
-        if (verifyDropdownSelection(trigger, value, popupRoot)) return { ok: true };
+      for (const variant of fieldValueAliases(label, value)) {
+        setNativeValue(searchInput, variant);
+        fireInputEvents(searchInput);
+        await sleep(DROPDOWN_SEARCH_DELAY_MS);
+        popupRoot = findActiveDropdownPopup(trigger) || popupRoot;
+        if (label === "Support Level" || label === "Support Agent") {
+          panel(`${label} search variant: ${variant}`, "info");
+        }
+        if (await clickBestOption(value, [popupRoot, document], label)) {
+          await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
+          if (verifyDropdownSelection(trigger, value, popupRoot, label)) return { ok: true };
+        }
       }
     }
 
     popupRoot = findActiveDropdownPopup(trigger) || popupRoot;
-    if (await clickBestOption(value, [popupRoot, document])) {
-      await sleep(250);
-      if (verifyDropdownSelection(trigger, value, popupRoot)) return { ok: true };
+    if (await clickBestOption(value, [popupRoot, document], label)) {
+      await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
+      if (verifyDropdownSelection(trigger, value, popupRoot, label)) return { ok: true };
     }
 
     popupRoot = findActiveDropdownPopup(trigger) || popupRoot;
-    if (await clickOptionByDataValue(value, [popupRoot, document])) {
-      await sleep(250);
-      if (verifyDropdownSelection(trigger, value, popupRoot)) return { ok: true };
+    if (await clickOptionByDataValue(value, [popupRoot, document], label)) {
+      await sleep(DROPDOWN_POST_SELECT_DELAY_MS);
+      if (verifyDropdownSelection(trigger, value, popupRoot, label)) return { ok: true };
     }
 
     popupRoot = findActiveDropdownPopup(trigger) || popupRoot;
-    if (await navigateToOption(trigger, value, popupRoot)) return { ok: true };
+    if (await navigateToOption(trigger, value, popupRoot, label)) return { ok: true };
 
-    return { ok: false, reason: "dropdown option not found" };
+    return { ok: false, reason: dropdownFailureReason(trigger, value, popupRoot, label) };
   }
 
-  async function waitForInteractiveControl(label, attempts) {
+  async function waitForInteractiveControl(label, attempts, delayMs) {
     const maxAttempts = attempts || FIELD_RETRY_ATTEMPTS;
+    const retryDelay = delayMs == null ? FIELD_RETRY_DELAY_MS : delayMs;
     let lastControl = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       lastControl = findControl(label);
       const resolved = extractInteractiveControl(lastControl);
       if (resolved && isVisible(resolved)) return resolved;
-      if (attempt < maxAttempts) await sleep(FIELD_RETRY_DELAY_MS);
+      if (attempt < maxAttempts) await sleep(retryDelay);
     }
 
     return extractInteractiveControl(lastControl) || lastControl;
+  }
+
+  function detectZohoLoggedInSupportAgent() {
+    const selectors = [
+      '[data-zsqa="user-name"]',
+      '[data-test-id*="user-name" i]',
+      '[data-test-id*="profile-name" i]',
+      '[class*="user-name" i]',
+      '[class*="profile-name" i]',
+      '[class*="account-name" i]',
+      '[aria-label*="signed in" i]',
+      '[title*="@" i]'
+    ];
+
+    for (const selector of selectors) {
+      const match = Array.from(document.querySelectorAll(selector))
+        .filter((el) => !el.closest(`#${PANEL_ID}`))
+        .map((el) => normalizeHumanName(visibleText(el) || el.getAttribute("title") || el.getAttribute("aria-label") || ""))
+        .find((text) => text && text.split(" ").length >= 2 && !/@/.test(text));
+      if (match) return match;
+    }
+
+    return "";
   }
 
   function getFieldValue(payload, label) {
@@ -1207,6 +1529,14 @@
         || ""
       ).trim();
     }
+    if (label === "Support Level") {
+      const value = String(payload.fields[label] || "").trim();
+      return value || "Level 1.5";
+    }
+    if (label === "Support Agent") {
+      const value = normalizeHumanName(payload.fields[label] || "");
+      return value || detectZohoLoggedInSupportAgent();
+    }
     return String(payload.fields[label] || "").trim();
   }
 
@@ -1217,29 +1547,35 @@
     const kind = FIELD_DEFINITIONS[label] && FIELD_DEFINITIONS[label].kind;
     const shouldText = kind === "text" || kind === "richtext" || TEXT_FIELD_LABELS.has(label);
     const shouldDropdown = kind === "dropdown" || DROPDOWN_FIELD_LABELS.has(label);
+    const retryPolicy = getRetryPolicy(label, kind);
     let lastDropdownReason = "";
+    let control = null;
 
-    for (let attempt = 1; attempt <= FIELD_RETRY_ATTEMPTS; attempt += 1) {
-      let control = findControl(label);
+    for (let attempt = 1; attempt <= retryPolicy.attempts; attempt += 1) {
+      control = control && isVisible(control) ? control : findControl(label);
       if (!control && shouldDropdown) {
-        control = await waitForInteractiveControl(label, 2);
+        control = await waitForInteractiveControl(label, Math.min(2, retryPolicy.attempts), retryPolicy.delayMs);
       }
       if (control && !isValidResolvedControl(label, control)) {
         panel(`Rejected candidate for ${label}: matched protected or unrelated field context.`, "error");
         control = null;
       }
       if (!control) {
-        if (attempt < FIELD_RETRY_ATTEMPTS) {
-          await sleep(FIELD_RETRY_DELAY_MS);
+        if (attempt < retryPolicy.attempts) {
+          await sleep(retryPolicy.delayMs);
           continue;
+        }
+        if (label === "Support Level" || label === "Support Agent") {
+          panel(`Failed to resolve ${label}: no usable control found after ${retryPolicy.attempts} attempt(s).`, "error");
         }
         return { ok: false, reason: "field not found" };
       }
 
       if (kind === "richtext") {
         if (!hasWritableEditor(control)) {
-          if (attempt < FIELD_RETRY_ATTEMPTS) {
-            await sleep(FIELD_RETRY_DELAY_MS);
+          if (attempt < retryPolicy.attempts) {
+            control = null;
+            await sleep(retryPolicy.delayMs);
             continue;
           }
           return { ok: false, reason: "field not ready" };
@@ -1257,7 +1593,7 @@
             return { ok: false, reason: `${normalize(label)} wrote into protected field` };
           }
           if ((label === "Priority" || label === "Ticket Category" || label === "Severity Level" || label === "Support Level")
-            && !verifyDropdownSelection(control, cleanValue)) {
+            && !verifyDropdownSelection(control, cleanValue, null, label)) {
             return { ok: false, reason: `${normalize(label)} verification failed` };
           }
           return { ok: true };
@@ -1278,8 +1614,9 @@
       if (finalDropdownResult.ok) return { ok: true };
       lastDropdownReason = finalDropdownResult.reason || lastDropdownReason || "dropdown option not found";
 
-      if (attempt < FIELD_RETRY_ATTEMPTS) {
-        await sleep(FIELD_RETRY_DELAY_MS);
+      control = null;
+      if (attempt < retryPolicy.attempts) {
+        await sleep(retryPolicy.delayMs);
         continue;
       }
     }
@@ -1308,15 +1645,71 @@
 
   async function waitForTicketForm(timeoutMs) {
     const started = Date.now();
-    await sleep(3000);
-    while (Date.now() - started < timeoutMs) {
-      if (isFormSufficientlyLoaded()) {
-        await sleep(READINESS_REQUIRED_DELAY_MS);
-        if (isFormSufficientlyLoaded()) return true;
+    let readySince = 0;
+
+    const isStableReady = () => {
+      if (!isFormSufficientlyLoaded()) {
+        readySince = 0;
+        return false;
       }
-      await sleep(READINESS_POLL_MS);
-    }
-    return false;
+      if (!readySince) readySince = Date.now();
+      return Date.now() - readySince >= READINESS_REQUIRED_DELAY_MS;
+    };
+
+    if (isStableReady()) return true;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const root = document.documentElement || document.body;
+      let intervalId = null;
+      let timeoutId = null;
+      let observer = null;
+
+      const cleanup = () => {
+        if (observer) observer.disconnect();
+        if (intervalId) clearInterval(intervalId);
+        if (timeoutId) clearTimeout(timeoutId);
+        document.removeEventListener("readystatechange", checkReadiness, true);
+        window.removeEventListener("load", checkReadiness, true);
+      };
+
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(result);
+      };
+
+      function checkReadiness() {
+        if (isStableReady()) {
+          finish(true);
+        }
+      }
+
+      observer = new MutationObserver(() => {
+        checkReadiness();
+      });
+      if (root) {
+        observer.observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true
+        });
+      }
+
+      intervalId = window.setInterval(() => {
+        if (Date.now() - started >= timeoutMs) {
+          finish(false);
+          return;
+        }
+        checkReadiness();
+      }, READINESS_POLL_MS);
+      timeoutId = window.setTimeout(() => finish(false), timeoutMs);
+
+      document.addEventListener("readystatechange", checkReadiness, true);
+      window.addEventListener("load", checkReadiness, true);
+      checkReadiness();
+    });
   }
 
   async function runAutofill(payload) {
@@ -1324,12 +1717,17 @@
     autofillRunning = true;
 
     try {
+      const autofillStartedAt = Date.now();
+      let firstFilledAt = 0;
       panel(`Loaded script revision ${SCRIPT_REVISION}`, "info");
       setPanelStatus("Waiting for Zoho new ticket form...", "info");
       panel("Waiting for Zoho new ticket form...", "info");
       setPanelStatus("Waiting for Zoho form to finish loading...", "info");
       panel("Waiting for Zoho form to finish loading...", "info");
-      await waitForTicketForm(30000);
+      const formReady = await waitForTicketForm(30000);
+      if (!formReady) {
+        panel("Zoho form readiness timed out. Starting autofill against the current page state.", "error");
+      }
       setPanelStatus("Zoho form is ready. Starting autofill now.", "info");
       panel("Zoho form is ready. Starting autofill now.", "info");
       setPanelStatus("Autofill in progress. Please do not click while fields are being filled.", "info");
@@ -1338,10 +1736,15 @@
       let filled = 0;
       let failed = 0;
       let deferredDescription = false;
+      let supportAgentStageReached = false;
 
       for (const label of FILL_ORDER) {
         if (SKIP_AUTOFILL_LABELS.has(label)) {
           continue;
+        }
+
+        if (label === "Support Agent") {
+          supportAgentStageReached = true;
         }
 
         const value = getFieldValue(payload, label);
@@ -1350,6 +1753,7 @@
         const result = await fillLabel(label, value);
         if (result.ok) {
           filled += 1;
+          if (!firstFilledAt) firstFilledAt = Date.now();
           panel(`Filled: ${label}`, "success");
         } else if (label === DESCRIPTION_RETRY_LABEL && result.reason === "field not ready") {
           deferredDescription = true;
@@ -1358,7 +1762,8 @@
           failed += 1;
           panel(`Skipped ${label}: ${result.reason}`, "error");
         }
-        await sleep(350);
+        const kind = FIELD_DEFINITIONS[label] && FIELD_DEFINITIONS[label].kind;
+        await sleep(getPostFillDelay(label, kind));
       }
 
       if (deferredDescription) {
@@ -1372,40 +1777,67 @@
         }
       }
 
-      const serialCleanup = await clearProtectedField("Serial Number");
-      if (serialCleanup.ok && serialCleanup.cleared) {
-        panel("Cleared protected field: Serial Number", "info");
-      } else if (serialCleanup.ok) {
-        panel("Protected field already clean: Serial Number", "info");
+      if (supportAgentStageReached) {
+        const serialCleanup = await clearProtectedField("Serial Number");
+        if (serialCleanup.ok && serialCleanup.cleared) {
+          panel("Cleared protected field: Serial Number", "info");
+        } else if (serialCleanup.ok) {
+          panel("Protected field already clean: Serial Number", "info");
+        } else {
+          panel(`Protected field cleanup skipped: Serial Number (${serialCleanup.reason})`, "error");
+        }
       } else {
-        panel(`Protected field cleanup skipped: Serial Number (${serialCleanup.reason})`, "error");
+        panel("Protected field cleanup skipped: Support Agent stage did not run.", "error");
+      }
+
+      const totalElapsedMs = Date.now() - autofillStartedAt;
+      const firstFillElapsedMs = firstFilledAt ? firstFilledAt - autofillStartedAt : 0;
+      if (firstFilledAt) {
+        panel(`Speed: first field in ${firstFillElapsedMs}ms, completed in ${totalElapsedMs}ms.`, "info");
+      } else {
+        panel(`Speed: no fields were filled after ${totalElapsedMs}ms.`, "error");
       }
 
       const finalMessage = `Done. Filled ${filled} field(s). ${failed ? `${failed} field(s) need manual checking.` : "Review the ticket, then click Submit manually."}`;
       setPanelStatus(finalMessage, failed ? "error" : "success");
       panel(finalMessage, failed ? "error" : "success");
+      if (!failed) {
+        schedulePanelAutoClose(4000);
+      }
 
       try {
         history.replaceState(null, document.title, location.pathname + location.search);
       } catch (error) {}
     } finally {
       autofillRunning = false;
+      if (queuedPayload) {
+        const nextPayload = queuedPayload;
+        queuedPayload = null;
+        pendingPayload = nextPayload;
+        setTimeout(() => {
+          if (!autofillRunning && pendingPayload === nextPayload) {
+            runAutofill(nextPayload);
+          }
+        }, 0);
+      }
     }
   }
 
+  installAssistantBridge();
+
+  if (chrome && chrome.runtime && chrome.runtime.onMessage && !runtimeListenerInstalled) {
+    runtimeListenerInstalled = true;
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (!message || message.type !== ACTION_AUTOFILL) return undefined;
+      const result = acceptPayload(message.payload, "extension message");
+      sendResponse(result);
+      return true;
+    });
+  }
+
   const payload = decodePayload();
-  if (payload) {
-    pendingPayload = payload;
-    ensurePanel();
-    panel(`Payload detected. Running script revision ${SCRIPT_REVISION}.`, "info");
-    setPanelStatus("Payload loaded. Autofill will begin automatically after the Zoho form is ready.", "info");
-    if (!autofillAutoStarted) {
-      autofillAutoStarted = true;
-      setTimeout(() => {
-        if (!autofillRunning && pendingPayload) {
-          runAutofill(pendingPayload);
-        }
-      }, 0);
-    }
+  if (payload && !autofillAutoStarted) {
+    autofillAutoStarted = true;
+    acceptPayload(payload, "URL hash");
   }
 }());

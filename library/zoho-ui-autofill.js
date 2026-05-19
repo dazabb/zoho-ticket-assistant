@@ -4,6 +4,9 @@
   const DEFAULT_ZOHO_NEW_TICKET_URL = "https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new";
   const STORAGE_KEY_URL = "ztaZohoNewTicketUrl";
   const HASH_KEY = "zta";
+  const BRIDGE_REQUEST_TYPE = "zta:bridge-request";
+  const BRIDGE_RESPONSE_TYPE = "zta:bridge-response";
+  const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
 
   const LABEL_PATTERNS = [
     ["customerCompanyName", /^\s*Customer\s+Company\s+Name\s*:\s*(.*)$/i],
@@ -95,18 +98,102 @@
     return "";
   }
 
+  function normalizeWhitespace(value) {
+    return String(value || "").replace(/\u00a0/g, " ").replace(/[\s\t\r\n]+/g, " ").trim();
+  }
+
+  function normalizeForMatch(value) {
+    return normalizeWhitespace(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+  }
+
+  function includesAny(text, patterns) {
+    const haystack = normalizeForMatch(text);
+    return patterns.some((pattern) => haystack.includes(normalizeForMatch(pattern)));
+  }
+
+  function isScheduledMaintenance(fields, workspaceText, description) {
+    const subject = firstNonEmpty(fields.subject, "");
+    const context = [
+      workspaceText,
+      subject,
+      description,
+      fields.issueDescription,
+      fields.ticketCategory,
+      fields.issueCategory,
+      fields.issueSubCategory
+    ].join(" ");
+
+    if (!includesAny(context, [
+      "power drain activity",
+      "maintenance activity",
+      "scheduled activity"
+    ])) {
+      return false;
+    }
+
+    if (includesAny(context, [
+      "backup failure",
+      "production down",
+      "service interruption",
+      "outage",
+      "alert",
+      "incident"
+    ])) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function normalizeSupportLevel(value) {
+    const raw = normalizeWhitespace(value);
+    if (!raw) return "Level 1.5";
+    const comparable = normalizeForMatch(raw).replace(/\s+/g, "");
+    if (comparable === "level1.5" || comparable === "l11.5" || comparable === "lvl1.5") {
+      return "Level 1.5";
+    }
+    return raw;
+  }
+
+  function normalizeSupportAgent(value) {
+    return normalizeWhitespace(value);
+  }
+
   function formatIssueCategory(issueCategory, ticketCategory) {
     const issue = String(issueCategory || "").trim();
     const ticket = String(ticketCategory || "").trim();
     if (!issue) return "";
+    if (normalizeForMatch(issue) === normalizeForMatch("Server - Request")) return "Server - Request";
     if (!ticket) return issue;
     if (issue.toLowerCase().includes(ticket.toLowerCase())) return issue;
     return `${issue} - ${ticket}`;
   }
 
-  function normalizeIssueSubCategory(fields, description, ticketCategory) {
+  function normalizeForbiddenIssueSubCategory(issueSubCategory, fields, description, ticketCategory, workspaceText) {
+    const raw = normalizeWhitespace(issueSubCategory);
+    if (!raw) return "";
+    if (normalizeForMatch(raw) === normalizeForMatch("Retrigger failed backup")) {
+      return "Reliability Issue";
+    }
+    if (
+      normalizeForMatch(raw) === normalizeForMatch("Monitoring")
+      && isScheduledMaintenance(fields, workspaceText, description)
+      && String(ticketCategory || "").trim().toLowerCase() === "request"
+    ) {
+      return "Status / Health Report";
+    }
+    return raw;
+  }
+
+  function normalizeIssueSubCategory(fields, description, ticketCategory, workspaceText) {
     const rawIssueCategory = firstNonEmpty(fields.issueCategory, "");
     const rawIssueSubCategory = firstNonEmpty(fields.issueSubCategory, "");
+    if (isScheduledMaintenance(fields, workspaceText, description)) {
+      return "Status / Health Report";
+    }
     const context = [
       rawIssueCategory,
       rawIssueSubCategory,
@@ -135,7 +222,13 @@
       return "Capacity Issue";
     }
 
-    return firstNonEmpty(rawIssueSubCategory, ticketCategory.toLowerCase() === "incident" ? "Performance Issue" : "");
+    return normalizeForbiddenIssueSubCategory(
+      firstNonEmpty(rawIssueSubCategory, ticketCategory.toLowerCase() === "incident" ? "Performance Issue" : ""),
+      fields,
+      description,
+      ticketCategory,
+      workspaceText
+    );
   }
 
   function isStorageCapacityBackupIncident(fields, description, ticketCategory, issueSubCategory) {
@@ -180,17 +273,27 @@
 
   function buildZohoPayload(workspaceText) {
     const fields = parseWorkspace(workspaceText);
-    const ticketCategory = firstNonEmpty(fields.ticketCategory, "Incident");
+    const profileSupportAgent = typeof window.getActiveSupportAgent === "function"
+      ? normalizeSupportAgent(window.getActiveSupportAgent() || "")
+      : "";
     const description = firstNonEmpty(fields.description, fields.issueDescription);
-    const issueSubCategory = normalizeIssueSubCategory(fields, description, ticketCategory);
+    const scheduledMaintenance = isScheduledMaintenance(fields, workspaceText, description);
+    const ticketCategory = firstNonEmpty(
+      scheduledMaintenance ? "Request" : "",
+      normalizeWhitespace(fields.ticketCategory),
+      "Incident"
+    );
+    const issueSubCategory = normalizeIssueSubCategory(fields, description, ticketCategory, workspaceText);
     const storageCapacityBackupIncident = isStorageCapacityBackupIncident(fields, description, ticketCategory, issueSubCategory);
     const supportedPortfolio = firstNonEmpty(
+      scheduledMaintenance ? "(SI) System Integration" : "",
       fields.supportedPortfolio,
       storageCapacityBackupIncident ? "(BaaS) Backup as a Service" : ""
     );
     const normalizedIssueCategory = firstNonEmpty(
+      scheduledMaintenance ? "Server - Request" : "",
       storageCapacityBackupIncident ? "Storage" : "",
-      fields.issueCategory,
+      normalizeWhitespace(fields.issueCategory),
       issueSubCategory === "Capacity Issue" ? "Storage" : ""
     );
     const severityLevel = fields.severityLevel || "";
@@ -208,13 +311,13 @@
         "Status": firstNonEmpty(fields.status, "Open"),
         "Ticket Owner": fields.ticketOwner || "",
         "Supported Portfolio": supportedPortfolio,
-        "Solutions": fields.solutions || "",
+        "Solutions": firstNonEmpty(scheduledMaintenance ? "SI" : "", fields.solutions),
         "Ticket Category": ticketCategory,
         "Issue Category": formatIssueCategory(normalizedIssueCategory, ticketCategory),
         "Issue Sub-Category": issueSubCategory,
         "Severity Level": severityLevel,
-        "Support Level": firstNonEmpty(fields.supportLevel, "Level 1.5"),
-        "Support Agent": fields.supportAgent || "",
+        "Support Level": normalizeSupportLevel(fields.supportLevel),
+        "Support Agent": firstNonEmpty(normalizeSupportAgent(fields.supportAgent), profileSupportAgent),
         "Priority": priority,
         "Channel": fields.channel || "",
         "Ticket Source": fields.ticketSource || "",
@@ -252,7 +355,46 @@
     }
   }
 
-  function openZohoTicket() {
+  function buildHashFallbackUrl(payload, targetUrl) {
+    const encoded = base64UrlEncodeUnicode(JSON.stringify(payload));
+    const separator = targetUrl.includes("#") ? "&" : "#";
+    return `${targetUrl}${separator}${HASH_KEY}=${encoded}`;
+  }
+
+  function sendExtensionBridgeRequest(action, data) {
+    return new Promise((resolve, reject) => {
+      const requestId = `zta-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const timeoutId = window.setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        reject(new Error("Extension bridge timeout"));
+      }, 1500);
+
+      function onMessage(event) {
+        const message = event && event.data;
+        if (event.source !== window || !message || message.type !== BRIDGE_RESPONSE_TYPE || message.requestId !== requestId) {
+          return;
+        }
+
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("message", onMessage);
+        if (message.ok) {
+          resolve(message.response || {});
+          return;
+        }
+        reject(new Error(message.error || "Extension bridge error"));
+      }
+
+      window.addEventListener("message", onMessage);
+      window.postMessage({
+        type: BRIDGE_REQUEST_TYPE,
+        requestId,
+        action,
+        data: data || {}
+      }, "*");
+    });
+  }
+
+  async function openZohoTicket() {
     const workspaceText = getWorkspaceText();
     if (!workspaceText || !workspaceText.trim()) {
       appendStatus("Workspace is empty. Add the ticket details first, then click Create Ticket.");
@@ -261,13 +403,21 @@
 
     const payload = buildZohoPayload(workspaceText);
     copyFallbackPayload(payload);
-
-    const encoded = base64UrlEncodeUnicode(JSON.stringify(payload));
     const targetUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_ZOHO_NEW_TICKET_URL;
-    const separator = targetUrl.includes("#") ? "&" : "#";
-    const url = `${targetUrl}${separator}${HASH_KEY}=${encoded}`;
+    const fallbackUrl = buildHashFallbackUrl(payload, targetUrl);
 
-    window.open(url, "_blank", "noopener");
+    try {
+      const response = await sendExtensionBridgeRequest(ACTION_PREPARE_OR_FOCUS, {
+        payload,
+        targetUrl
+      });
+      if (response && response.ok === false) {
+        throw new Error(response.error || "Extension bridge refused request");
+      }
+      return;
+    } catch (error) {}
+
+    window.open(fallbackUrl, "_blank", "noopener");
     appendStatus("Opening Zoho ticket page and sending the auto-fill data. Keep the Chrome extension enabled, then review before submitting.");
   }
 

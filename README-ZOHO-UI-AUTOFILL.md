@@ -1,6 +1,8 @@
-# Ticket Assistant → Zoho Desk UI Autofill
+# Ticket Assistant BETA → Zoho Desk UI Autofill
 
-This version does **not** create tickets through the Zoho API.
+This beta version does **not** create tickets through the Zoho API.
+
+It is built to make ticket work faster, but it is not perfect yet. Please review the output before using it, and report bugs or odd behavior when you spot them.
 
 It adds the workflow you asked for:
 
@@ -9,6 +11,15 @@ It adds the workflow you asked for:
 3. Zoho Desk opens at `https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new`.
 4. The Chrome extension reads the ticket data from the URL hash and auto-fills the Zoho form.
 5. You review the ticket, choose/verify contact if needed, then click **Submit** manually.
+
+## Key features
+
+- All-in-one workspace: Keep ticket details, alerts, emails, images, notes, and generated Zoho output in one place.
+- Built-in AI help: Ask questions and review ticket details without needing a separate AI tool.
+- Image support: Paste or upload screenshots and let the system pull useful text from them automatically.
+- Zoho-ready ticket output: Generate cleaner summaries, descriptions, severity, priority, and escalation notes.
+- Bridge-call support: Get guidance on what to check next, what to capture, and when to escalate.
+- Zoho autofill workflow: Open Zoho Desk and auto-fill most ticket fields to speed up ticket creation.
 
 ## Why the Chrome extension is needed
 
@@ -68,17 +79,3 @@ Solutions: MS
 - Zoho custom dropdowns can change markup, so some fields may still need manual checking.
 - Contact selection may still require manual confirmation if Zoho requires choosing an existing Contact record.
 - The script does **not** auto-submit the ticket. This is intentional so you can review the data first.
-
-## Change the Zoho target URL
-
-The default URL is:
-
-```text
-https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new
-```
-
-If you need to change it, open your browser console on the Ticket Assistant page and run:
-
-```js
-TicketAssistantZohoAutofill.setZohoNewTicketUrl("https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new");
-```
