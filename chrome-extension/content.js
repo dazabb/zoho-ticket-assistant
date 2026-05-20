@@ -568,6 +568,13 @@
       aliases.unshift("Level1.5");
       aliases.push("1.5");
     }
+    if (label === "Issue Category" && normalize(raw).includes(normalize("Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage )"))) {
+      aliases.push("Infrastructure");
+      aliases.push("Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage");
+      aliases.push("Zadara Infrastructure");
+      aliases.push("Dell Server and Storage");
+      aliases.push("Zadara Storage");
+    }
     const unique = [];
     for (const item of aliases) {
       const normalizedItem = String(item || "").trim();
@@ -1332,6 +1339,14 @@
       if (aliases.some((candidate) => controlText.includes(normalize(candidate))) && !controlText.includes(normalize("unassigned"))) {
         return true;
       }
+    } else if (label === "Issue Category") {
+      if (
+        controlText
+        && controlText !== "-none-"
+        && aliases.some((candidate) => valueMatchesCandidate(controlText, candidate) || normalize(controlText).includes(normalize(candidate)))
+      ) {
+        return true;
+      }
     } else if (label === "Support Level") {
       if (aliases.some((candidate) => valueMatchesCandidate(controlText, candidate))) {
         return true;
@@ -1350,6 +1365,9 @@
           const text = visibleText(el);
           if (aliases.some((candidate) => normalize(candidate) === normalize("Sandz Support L1.5"))) {
             return aliases.some((candidate) => normalize(text).includes(normalize(candidate)));
+          }
+          if (label === "Issue Category") {
+            return aliases.some((candidate) => valueMatchesCandidate(text, candidate) || normalize(text).includes(normalize(candidate)));
           }
           return aliases.some((candidate) => valueMatchesCandidate(text, candidate));
         });

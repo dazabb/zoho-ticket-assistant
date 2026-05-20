@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   "use strict";
 
   const STORAGE_KEYS = {
@@ -56,6 +56,76 @@ The assistant will generate:
 2. Viber Details/Zoho Comment on Ticket for initial troubleshooting
 `;
   const EMPTY_INCIDENT_PROMPT = "Please paste the ticket details, email content, alert, request, images, or bridge-call notes so I can generate the Zoho ticket auto-fill.";
+  const ACCOUNT_ALIAS_RULES = [
+    { account: "AMDOCS-SMART", customer: "Amdocs Philippines, Inc.", aliases: ["smart/e-pldt/amdocs", "amdocs-smart", "amdocs"] },
+    { account: "PLDT", customer: "ePLDT", aliases: ["e-pldt", "epldt", "pldt"] },
+    { account: "Smart", customer: "SMART", aliases: ["smart"] },
+    { account: "Radius", customer: "RADIUS TELECOMS INC.", aliases: ["radius telecoms inc", "radius telecoms", "radius"] },
+    { account: "EWB", customer: "East West Bank", aliases: ["east west bank", "ewb"] },
+    { account: "BCDA", customer: "BCDA", aliases: ["bcda"] },
+    { account: "BPITC", customer: "BPI Tokyo Century", aliases: ["bpi tokyo century", "bpitc"] },
+    { account: "BPI", customer: "BPI", aliases: [" bpi ", "bank of the philippine islands"] },
+    { account: "PSE", customer: "Philippine Stock Exchange", aliases: ["philippine stock exchange", "pse"] },
+    { account: "GMA", customer: "GMA Network Inc.", aliases: ["gma network inc", "gma (ict)", "gma (mams)", "gma, (mams)", "gma"] },
+    { account: "Monde", customer: "Monde Nissin", aliases: ["monde nissin", "monde"] },
+    { account: "SunLife", customer: "Sunlife", aliases: ["sun life", "sunlife"] },
+    { account: "CebAir", customer: "Cebu Air, Inc.", aliases: ["cebu air, inc", "cebu air", "cebair"] },
+    { account: "NatRe", customer: "National Reinsurance Corp.", aliases: ["national reinsurance corp", "national reinsurance", "natre"] },
+    { account: "Honda Cars", customer: "HONDA", aliases: ["honda phils. inc", "honda phils inc", "honda cars", "honda"] },
+    { account: "First Sumiden Circuits Inc.", customer: "First Sumiden", aliases: ["first sumiden circuits inc", "first sumiden"] },
+    { account: "COL Financial", customer: "COL", aliases: ["col financial", "col"] },
+    { account: "Department of Energy", customer: "DOE", aliases: ["department of energy", "doe"] },
+    { account: "DSWD", customer: "DSWD", aliases: ["dswd"] },
+    { account: "PHIC", customer: "PhilHealth", aliases: ["philhealth", "phic"] },
+    { account: "Okada", customer: "Okada Manila", aliases: ["okada manila", "okada"] },
+    { account: "Pascual", customer: "Pascual", aliases: ["pascual lab", "pascual"] },
+    { account: "Angeles Electric Corp", customer: "ANGELES ELECTRIC", aliases: ["angeles electric corp", "angeles electric", "aec"] },
+    { account: "Orix", customer: "Orix", aliases: ["orix"] },
+    { account: "UHRI", customer: "Universal Hotels and Resorts Inc.", aliases: ["universal hotels and resorts inc", "uhri"] },
+    { account: "SMIC", customer: "SM Investment", aliases: ["sm investment", "smic"] },
+    { account: "EMD Technology Philippines Inc.", customer: "EMD", aliases: ["emd technology philippines inc", "emd technology philippines", "emd"] },
+    { account: "Watsons", customer: "WATSONS", aliases: ["watsons"] },
+    { account: "Bureau of the Treasury", customer: "BOTR", aliases: ["bureau of the treasury", "botr"] }
+  ];
+  const SUBJECT_LABEL_RULES = new Map([
+    ["east west bank", "EWB"],
+    ["ewb", "EWB"],
+    ["bcda", "BCDA"],
+    ["okada manila", "Okada"],
+    ["okada", "Okada"],
+    ["monde nissin", "Monde Nissin"],
+    ["monde", "Monde Nissin"],
+    ["national reinsurance corp", "NatRe"],
+    ["natre", "NatRe"],
+    ["gma network inc", "GMA"],
+    ["gma", "GMA"],
+    ["bpi tokyo century", "BPI Tokyo Century"],
+    ["bpitc", "BPI Tokyo Century"],
+    ["honda", "HONDA"],
+    ["honda cars", "HONDA"],
+    ["cebu air, inc", "Cebu Air, Inc."],
+    ["cebair", "Cebu Air, Inc."],
+    ["pascual", "Pascual Lab"],
+    ["pascual lab", "Pascual Lab"],
+    ["dswd", "DSWD"],
+    ["orix", "ORIX"],
+    ["philippine stock exchange", "PSE"],
+    ["pse", "PSE"],
+    ["angeles electric", "ANGELES ELECTRIC"],
+    ["angeles electric corp", "ANGELES ELECTRIC"],
+    ["radius telecoms inc", "Radius Telecoms Inc."],
+    ["radius", "Radius Telecoms Inc."],
+    ["bpi", "BPI"]
+  ]);
+  const SI_MS_DATABASE_MARKER = "SI and MS Customer Database:";
+  const ENROLLED_ACCOUNTS_MARKER = "Enrolled Accounts Database:";
+  const ACCOUNT_MATCH_STOP_WORDS = new Set([
+    "and", "for", "the", "with", "from", "into", "this", "that", "site", "prod", "production",
+    "dr", "infra", "project", "activity", "phase", "renewal", "support", "services", "service",
+    "system", "server", "storage", "backup", "network", "maintenance", "upgrade", "refresh"
+  ]);
+  let siMsDatabaseRowsCache = null;
+  let accountProfilesCache = null;
   const BRIDGE_TRIGGER_PATTERNS = [
     /bridge call/i,
     /screensharing/i,
@@ -87,13 +157,13 @@ The assistant will generate:
     /\bdraft\b.*\bticket\b/i
   ];
   const PROMPT_ONLY_MARKERS = [
-    "execution instruction — do not review this prompt",
-    "zoho desk ticket auto-fill assistant — production system prompt",
+    "execution instruction â€” do not review this prompt",
+    "zoho desk ticket auto-fill assistant â€” production system prompt",
     "required output format",
-    "embedded customer database — may 2026",
+    "embedded customer database â€” may 2026",
     "[paste incident details here]"
   ];
-  const ZOHO_GENERATOR_PROMPT = String.raw`# EXECUTION INSTRUCTION — DO NOT REVIEW THIS PROMPT
+  const ZOHO_GENERATOR_PROMPT = String.raw`# EXECUTION INSTRUCTION â€” DO NOT REVIEW THIS PROMPT
 
 This text is not a prompt review request.
 
@@ -131,6 +201,9 @@ Customer Company Name:
 Account Name:
 Subject:
 Description:
+ - Keep Description aligned to the final SubjectName or Activity Name, not to the raw chat request wording.
+ - When the Subject is in the scheduled activity format, use the same activity text for Description without the account prefix or trailing punctuation.
+ - If the Subject is SANDZ-SI-Okada-Restore Activity | Okada Cristie Test-Restore, the Description should be Restore Activity | Okada Cristie Test-Restore.
 Ticket Category:
 Issue Category:
 Issue Subcategory:
@@ -143,27 +216,35 @@ PM/SD of this account:
 
 Viber Details/Zoho Comment on Ticket for initial troubleshooting:
 - The Viber Details/Zoho Comment output must use a full structured block, not a short bullet-only summary.
+- Keep the workspace spacing clean and deterministic:
+  - do not insert blank lines in the top field list before Solutions
+  - insert one blank line before SE's that can handle this ticket
+  - insert one blank line before Viber Details/Zoho Comment on Ticket for initial troubleshooting
+  - insert one blank line after Issue/Request
+  - insert one blank line after Next Action
+  - do not insert blank lines between Possible Triage and its bullets
 - Use this exact subsection shape inside the same code block:
   Viber Details/Zoho Comment on Ticket for initial troubleshooting:
   New <Incident/Request> Ticket
   Issue/Request: <clear operational summary>
-  Initial Troubleshooting:
-  • <L1/L1.5-safe action actually based on visible ticket, screenshot, or alert details>
-  • <L1/L1.5-safe action actually based on visible ticket, screenshot, or alert details>
   Next Action: <single escalation or monitoring sentence>
   Possible Triage:
-  • <source or screenshot review instruction>
-  • <if/then decision instruction>
-  • <client confirmation or recent-change question>
-  • <Teams/Zoom or screenshot instruction when more visibility is needed>
-  • <L2/assigned SE initial-assistance instruction>
-  • <stop-and-escalate boundary>
+  â€¢ <source or screenshot review instruction>
+  â€¢ <if/then decision instruction>
+  â€¢ <client confirmation or recent-change question>
+  â€¢ <Teams/Zoom or screenshot instruction when more visibility is needed>
+  â€¢ <L2/assigned SE initial-assistance instruction>
+  â€¢ <stop-and-escalate boundary>
 - Do not end the Viber section after 2 or 3 short bullets.
 - Do not replace the named subsections with flat top-level bullets for normal ticket generation.
 
 Solutions rules:
 - Use Solutions: SI for implementation, migration, deployment, project activity, maintenance activity, and scheduled technical work.
 - Use Solutions: MS for managed support, monitoring, backup operations, storage incidents, and other operational support tickets.
+- Resolve the account/customer first, then consult the embedded SI/MS database before finalizing Solutions.
+- If the matched account has only one typed profile in the embedded SI/MS database, use that type as the default classification.
+- If the matched account has both MS and SI rows, match Account + Product/Project first; if no clear row matches, use the newest typed row for that account as the fallback classification.
+- Keep Solutions, subject prefix, and SE row preference aligned to the same resolved account classification.
 
 Bridge call / screenshot triage mode:
 - If the user explicitly asks for live triage help during a bridge call, screenshot review, or asks what to open/click next, return only:
@@ -208,6 +289,9 @@ Customer/company output rules:
 - If the source input points to SMART, output Customer Company Name: SMART.
 - If the source input points to PLDT or ePLDT, output Customer Company Name: ePLDT.
 - For database matching only, you may still use the embedded account aliases and enrolled-account rows to find the correct SE and PM/SD.
+- Keep Customer Company Name in its resolved account form.
+- For the Subject line only, use the canonical subject customer label for mapped accounts instead of freely title-casing the company name.
+- Canonical subject customer labels include: East West Bank -> EWB, BCDA -> BCDA, Okada Manila -> Okada, Monde/Monde Nissin -> Monde Nissin, National Reinsurance Corp. -> NatRe, GMA Network Inc. -> GMA, BPI Tokyo Century -> BPI Tokyo Century, HONDA -> HONDA, Cebu Air, Inc. -> Cebu Air, Inc., Pascual -> Pascual Lab, DSWD -> DSWD, Orix -> ORIX, Philippine Stock Exchange -> PSE, ANGELES ELECTRIC -> ANGELES ELECTRIC, RADIUS TELECOMS INC. -> Radius Telecoms Inc., BPI -> BPI.
 
 Account Name rule:
 - Use <Customer Company Name> - Sandz when a customer is identified.
@@ -231,11 +315,13 @@ Subject rules:
 - If the ticket is SI-classified, use subject prefix SANDZ-SI.
 - Otherwise, use subject prefix SANDZ-MSDCO.
 - Resolve one subject customer label only; do not combine SMART, ePLDT, and AMDOCS in one subject when one account is clearly identified.
+- For mapped accounts, the subject customer label must use the canonical subject customer label exactly and must not be freely title-cased.
 - Do not wrap the customer label or SubjectName in parentheses.
+- Do not end the subject with a trailing period.
 - If ticket number exists:
-<Subject Prefix>-<Subject Customer Label>-<SubjectName>. Ticket No. #<ticket number>
+<Subject Prefix>-<Subject Customer Label>-<SubjectName> Ticket No. #<ticket number>
 - Otherwise:
-<Subject Prefix>-<Subject Customer Label>-<SubjectName>.
+<Subject Prefix>-<Subject Customer Label>-<SubjectName>
 - For scheduled activities and other date-sensitive planned work, include the schedule in the subject when it is clearly stated and operationally important.
 - Scheduled activity base format:
 <Subject Prefix>-<Subject Customer Label>-<Activity Name>.
@@ -244,7 +330,7 @@ Subject rules:
 - Example AMDOCS output:
 Customer Company Name: Amdocs Philippines, Inc.
 Account Name: AMDOCS - Sandz
-Subject: SANDZ-SI-AMDOCS-Power Drain Activity.
+Subject: SANDZ-SI-AMDOCS-Power Drain Activity
 - Example AMDOCS output with schedule:
 Subject: SANDZ-SI-AMDOCS-Activity | Power Drain Activity (May 25, 2026 10PM-5AM)
 - Build SubjectName from the main issue pattern, not from a generic backup phrase.
@@ -269,6 +355,7 @@ Subject: SANDZ-SI-AMDOCS-Activity | Power Drain Activity (May 25, 2026 10PM-5AM)
   - Capacity Tier Offload Failure with S3-Compatible Connection Errors
 
 Always classify Ticket Category as Incident by default; use Request only for clear service/work requests.
+Explicit one-time delivery work such as migration, cabling, implementation, deployment, refresh, upgrade, cutover, relocation, and scheduled project activity is a clear Request signal, not an Incident signal.
 
 Scheduled maintenance mapping rules:
 - When the ticket clearly describes planned maintenance work such as power drain activity, maintenance activity, scheduled activity, maintenance window work, or dated planned technical work, output Ticket Category: Request.
@@ -276,13 +363,50 @@ Scheduled maintenance mapping rules:
 - For that same planned-work pattern, output Issue Subcategory: Status / Health Report.
 - Use the exact Zoho option texts Server - Request and Status / Health Report when generating those values.
 - Continue accepting both field labels Issue Subcategory and Issue Sub-Category in the workspace format.
+- Exception for SI migration and delivery activity requests:
+  - if the ticket is SI-classified and the subject, activity, or context clearly describes migration, cabling, implementation, deployment, refresh, upgrade, cutover, relocation, or other one-time delivery work, output Ticket Category: Request
+  - for that SI migration/delivery pattern, do not let generic support wording override the request classification
+  - if that same SI migration/delivery pattern involves storage platforms such as SAN, NetApp, storage, NAS, PowerStore, Unity, or Synology, output Issue Category: Storage - Request
+  - if that same SI migration/delivery pattern involves storage platforms such as SAN, NetApp, storage, NAS, PowerStore, Unity, or Synology, output Issue Subcategory: Migration
+  - if that same SI migration/delivery pattern involves server, compute, virtualization, VMware, Hyper-V, or host work instead of storage, use the matching request family and output Issue Subcategory: Migration
+- for that SI migration/delivery pattern, output Supported Portfolio: (SI) System Integration
+- Exception for restore and restoration requests:
+  - if the ticket clearly describes restore activity, restoration, test restore, or similar recovery validation work, output Ticket Category: Request
+  - for that restore/restoration request pattern, output Issue Category: Backup - Request
+  - for that restore/restoration request pattern, output Issue Subcategory: Restoration
+  - do not downgrade restore/restoration requests to Storage - Request / Status / Health Report just because the wording is short or activity-based
+- Exception for SI storage health checks:
+  - if the ticket is SI-classified and describes a scheduled health check, maintenance check, or health verification for storage platforms such as NetApp, storage, NAS, SAN, PowerStore, Unity, or Synology, do not use Server - Request
+  - for that SI storage health-check pattern, output Ticket Category: Request
+  - for that SI storage health-check pattern, output Issue Category: Storage - Request
+  - for that SI storage health-check pattern, output Issue Subcategory: Status / Health Report
+  - for that SI storage health-check pattern, output Supported Portfolio: (SI) System Integration
+- Exception for scheduled/request IaaS health checks:
+  - if the ticket is a health check, infrastructure check, or health/metrics check and the context points to IaaS or infrastructure platforms such as Zadara, OS, Dell server, Dell storage, or general infrastructure verification work, do not use the generic Server - Request / Status / Health Report mapping
+  - for that IaaS health-check pattern, output Ticket Category: Request
+  - for that IaaS health-check pattern, output Issue Category: Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage )
+  - for that IaaS health-check pattern, output Issue Subcategory: Check IAAS Health and Metrics
+  - for that IaaS health-check pattern, output Supported Portfolio: (IaaS) Infrastructure as a Service
+  - for that IaaS health-check pattern, output Solutions: MS
+  - for that IaaS health-check pattern, keep the MS subject prefix and use the dated activity subject format when date/time is present
+
+Issue Category and Issue Subcategory validity rules:
+- Do not invent Issue Category or Issue Subcategory values that are not valid Zoho options.
+- Unsupported labels such as IT Support - Request and General Inquiry must not appear in the final output.
+- Stay within the approved Zoho category families and their valid option texts when choosing Issue Category and Issue Subcategory.
+- For request tickets with infrastructure or IaaS context, use the exact Zoho Issue Category text Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage ) when that is the intended mapping.
+- For request tickets with infrastructure or IaaS health-check context, use Issue Subcategory: Check IAAS Health and Metrics.
 
 SI classification rules:
 - Classify as SI when the request is clearly about implementation, migration, deployment, project activity, maintenance activity, cabling activity, refresh activity, upgrade activity, scheduled technical work, or other one-time delivery work.
-- For SI-classified tickets, keep Supported Portfolio aligned to (SI) System Integration when the ticket content supports it.
+- For SI-classified tickets, always output Supported Portfolio: (SI) System Integration.
 - For SI-classified tickets, output Solutions: SI and use the SANDZ-SI subject prefix.
 
 Backup incident mapping rules:
+- For backup-related incidents, do not automatically keep Backup - Incident when the strongest visible symptom is connectivity failure.
+- If the ticket explicitly shows connection refused, failed telnet, port inaccessible, port closed, unreachable service, unreachable endpoint, firewall/path blocking, or other clear network-path evidence, output Issue Category: Network - Incident.
+- For that backup-connectivity incident pattern, output Issue Subcategory: Network Connection.
+- Keep Supported Portfolio: (BaaS) Backup as a Service and Solutions: MS for that backup-connectivity incident pattern.
 - For backup offload failures caused by repository pressure, capacity tier problems, local repository nearly full state, or S3-compatible offload failures, output Supported Portfolio: (BaaS) Backup as a Service.
 - For that same incident type, output Issue Category: Storage - Incident.
 - For that same incident type, output Issue Subcategory: Capacity Issue.
@@ -323,7 +447,6 @@ Viber Details / Zoho Comment rules:
 - For GMA / GMA Network Inc., the enrolled account line does not show Remote Support enabled, so default the Possible Triage wording to client-guided screenshare or screenshot collection unless the ticket explicitly states otherwise.
 - For backup offload, repository-pressure, S3-compatible, or capacity-tier incidents, prefer a fuller ChatGPT-web-style Viber structure:
   - write Issue/Request as a concise but complete operational summary of the visible issue
-  - write Initial Troubleshooting as 3 to 4 bullets based only on visible ticket details, screenshots, alerts, or customer-provided statements
   - write Next Action as one clear escalation sentence to L2/assigned SE
   - write Possible Triage as 5 to 6 operational bullets with similar density to the preferred web output
 - For these incidents, Possible Triage should usually include:
@@ -375,7 +498,7 @@ Priority consistency rules:
 - When Severity is Sev3, output Priority: Medium.
 - When Severity is Sev4, output Priority: Low.
 
-Embedded Customer Database — May 2026
+Embedded Customer Database â€” May 2026
 
 SI and MS Customer Database:
 BCDA | BCDA / Integrated Cloud Backup Project Phase 2 | 2025 | MS | Atempo / Acronis | Aeron Villanueva | EJ Remolona
@@ -690,7 +813,8 @@ Severity answer structure:
     activeProfileId: "",
     bootProfileId: "",
     settingsBound: false,
-    listenersBound: false
+    listenersBound: false,
+    pendingFreshAccountContext: false
   };
 
   function $(id) {
@@ -838,6 +962,8 @@ Severity answer structure:
       workspace: String(workspace || DEFAULT_WORKSPACE),
       chatMessages: String(chatMessages || ""),
       chatConversation: Array.isArray(chatConversation) ? chatConversation : [],
+      lastPromptedAccount: "",
+      lastContextResetAt: "",
       createdAt: now,
       updatedAt: now
     };
@@ -899,6 +1025,7 @@ Severity answer structure:
   function applySessionToUi(session) {
     if (!session) return;
     state.suppressSessionPersistence = true;
+    state.pendingFreshAccountContext = false;
     state.chatConversation = Array.isArray(session.chatConversation)
       ? session.chatConversation.slice()
       : [];
@@ -927,6 +1054,8 @@ Severity answer structure:
             workspace: String(session && session.workspace || DEFAULT_WORKSPACE),
             chatMessages: String(session && session.chatMessages || ""),
             chatConversation: Array.isArray(session && session.chatConversation) ? session.chatConversation : [],
+            lastPromptedAccount: String(session && session.lastPromptedAccount || ""),
+            lastContextResetAt: String(session && session.lastContextResetAt || ""),
             createdAt: String(session && session.createdAt || new Date().toISOString()),
             updatedAt: String(session && session.updatedAt || session && session.createdAt || new Date().toISOString())
           };
@@ -1053,7 +1182,8 @@ Severity answer structure:
         file: null,
         previewUrl: "",
         status: String(attachment && attachment.status || "ready"),
-        ocrText: String(attachment && attachment.ocrText || "")
+        ocrText: String(attachment && attachment.ocrText || ""),
+        addedAt: Number(attachment && attachment.addedAt || 0)
       };
     });
     state.attachmentCounter = state.attachments.length;
@@ -1413,6 +1543,11 @@ Severity answer structure:
     state.fileHandle = null;
     state.latestFileName = "ticket-workspace.txt";
     setEditorText(DEFAULT_WORKSPACE);
+    const session = getActiveSession();
+    if (session) {
+      session.lastPromptedAccount = "";
+      markActiveSessionUpdated();
+    }
     saveCurrentCodeToHistory(true);
     window.lastSavedCode = getEditorText();
     updateDocumentTitle();
@@ -1615,7 +1750,8 @@ Severity answer structure:
       id: attachment.id,
       name: attachment.name,
       status: attachment.status,
-      ocrText: attachment.ocrText
+      ocrText: attachment.ocrText,
+      addedAt: Number(attachment.addedAt || 0)
     };
   }
 
@@ -1770,7 +1906,8 @@ Severity answer structure:
       file,
       previewUrl: URL.createObjectURL(file),
       status: "processing",
-      ocrText: ""
+      ocrText: "",
+      addedAt: Date.now()
     };
 
     state.attachments.push(attachment);
@@ -1840,6 +1977,412 @@ Severity answer structure:
       .replace(/[^\w\s/-]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function toTitleCaseLabel(value) {
+    return String(value || "")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(function (part) {
+        return part.charAt(0).toUpperCase() + part.slice(1);
+      })
+      .join(" ");
+  }
+
+  function getCanonicalSubjectCustomerLabel(account, customer) {
+    const candidates = [
+      normalizeText(account),
+      normalizeText(customer)
+    ].filter(Boolean);
+    for (let index = 0; index < candidates.length; index += 1) {
+      const mapped = SUBJECT_LABEL_RULES.get(candidates[index]);
+      if (mapped) return mapped;
+    }
+    return toTitleCaseLabel(customer || account || "");
+  }
+
+  function extractPromptBlock(prompt, startMarker, endMarker) {
+    const raw = String(prompt || "");
+    const start = raw.indexOf(startMarker);
+    if (start === -1) return "";
+    const fromStart = raw.slice(start + startMarker.length);
+    const end = endMarker ? fromStart.indexOf(endMarker) : -1;
+    return end === -1 ? fromStart : fromStart.slice(0, end);
+  }
+
+  function parseYearValue(value) {
+    const match = String(value || "").match(/\b(20\d{2})\b/);
+    return match ? Number(match[1]) : -1;
+  }
+
+  function parseSiMsDatabaseRows() {
+    if (siMsDatabaseRowsCache) return siMsDatabaseRowsCache;
+
+    const block = extractPromptBlock(ZOHO_GENERATOR_PROMPT, SI_MS_DATABASE_MARKER, ENROLLED_ACCOUNTS_MARKER);
+    const rows = block
+      .split(/\r?\n/)
+      .map(function (line) { return line.trim(); })
+      .filter(function (line) { return line && line.includes("|"); })
+      .map(function (line, index) {
+        const parts = line.split("|").map(function (part) { return part.trim(); });
+        return {
+          index: index,
+          account: parts[0] || "",
+          project: parts[1] || "",
+          year: parts[2] || "",
+          solution: parts[3] || "",
+          product: parts[4] || "",
+          primarySe: parts[5] || "",
+          secondarySe: parts[6] || "",
+          yearValue: parseYearValue(parts[2] || "")
+        };
+      })
+      .filter(function (row) {
+        return row.account && (row.solution === "MS" || row.solution === "SI");
+      });
+
+    siMsDatabaseRowsCache = rows;
+    return rows;
+  }
+
+  function buildAccountProfiles() {
+    if (accountProfilesCache) return accountProfilesCache;
+
+    const profiles = new Map();
+    parseSiMsDatabaseRows().forEach(function (row) {
+      const key = normalizeText(row.account);
+      if (!key) return;
+      if (!profiles.has(key)) {
+        profiles.set(key, {
+          key: key,
+          account: row.account,
+          rows: [],
+          types: new Set()
+        });
+      }
+      const profile = profiles.get(key);
+      profile.rows.push(row);
+      profile.types.add(row.solution);
+    });
+
+    accountProfilesCache = profiles;
+    return profiles;
+  }
+
+  function scoreFieldMatch(haystack, field) {
+    const normalizedField = normalizeText(field);
+    if (!haystack || !normalizedField) return 0;
+    if (haystack.includes(normalizedField)) {
+      return 50 + normalizedField.length;
+    }
+
+    const tokens = normalizedField
+      .split(" ")
+      .map(function (token) { return token.trim(); })
+      .filter(function (token) {
+        return token.length >= 4 && !ACCOUNT_MATCH_STOP_WORDS.has(token);
+      });
+    if (!tokens.length) return 0;
+
+    const overlaps = tokens.filter(function (token) { return haystack.includes(token); });
+    if (overlaps.length >= 2) return overlaps.length * 12;
+    if (overlaps.length === tokens.length && overlaps.length > 0) return overlaps.length * 8;
+    return 0;
+  }
+
+  function compareRowsByYearDesc(a, b) {
+    if (b.yearValue !== a.yearValue) return b.yearValue - a.yearValue;
+    return a.index - b.index;
+  }
+
+  function findBestProjectRow(profile, haystack) {
+    if (!profile || !Array.isArray(profile.rows) || !haystack) return null;
+
+    const ranked = profile.rows
+      .filter(function (row) { return row.solution === "MS" || row.solution === "SI"; })
+      .map(function (row) {
+        const projectScore = scoreFieldMatch(haystack, row.project);
+        const productScore = scoreFieldMatch(haystack, row.product);
+        return {
+          row: row,
+          score: (projectScore * 2) + productScore
+        };
+      })
+      .filter(function (entry) { return entry.score > 0; })
+      .sort(function (a, b) {
+        if (b.score !== a.score) return b.score - a.score;
+        return compareRowsByYearDesc(a.row, b.row);
+      });
+
+    return ranked.length ? ranked[0].row : null;
+  }
+
+  function findNewestTypedRow(profile) {
+    if (!profile || !Array.isArray(profile.rows)) return null;
+    const typedRows = profile.rows
+      .filter(function (row) { return row.solution === "MS" || row.solution === "SI"; })
+      .sort(compareRowsByYearDesc);
+    return typedRows.length ? typedRows[0] : null;
+  }
+
+  function resolveAccountFromText(text) {
+    const haystack = normalizeText(text);
+    if (!haystack) return null;
+
+    const aliasMatches = ACCOUNT_ALIAS_RULES
+      .map(function (rule) {
+        const bestAlias = rule.aliases
+          .map(function (alias) { return normalizeText(alias); })
+          .filter(function (alias) { return alias && haystack.includes(alias); })
+          .sort(function (a, b) { return b.length - a.length; })[0];
+        if (!bestAlias) return null;
+        return {
+          account: rule.account,
+          customer: rule.customer,
+          matchedAlias: bestAlias,
+          score: bestAlias.length + 1000
+        };
+      })
+      .filter(Boolean)
+      .sort(function (a, b) { return b.score - a.score; });
+    if (aliasMatches.length) return aliasMatches[0];
+
+    const profiles = Array.from(buildAccountProfiles().values());
+    const directMatches = profiles
+      .map(function (profile) {
+        const normalizedAccount = normalizeText(profile.account);
+        if (!normalizedAccount || !haystack.includes(normalizedAccount)) return null;
+        return {
+          account: profile.account,
+          customer: profile.account,
+          matchedAlias: normalizedAccount,
+          score: normalizedAccount.length
+        };
+      })
+      .filter(Boolean)
+      .sort(function (a, b) { return b.score - a.score; });
+
+    return directMatches.length ? directMatches[0] : null;
+  }
+
+  function extractWorkspaceFieldValue(text, label) {
+    const raw = String(text || "");
+    const escapedLabel = String(label || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`^\\s*${escapedLabel}\\s*:\\s*(.*)$`, "im");
+    const match = raw.match(pattern);
+    return match ? String(match[1] || "").trim() : "";
+  }
+
+  function resolveNormalizedAccountKey(text) {
+    const match = resolveAccountFromText(text);
+    return match ? normalizeText(match.account || match.customer || "") : "";
+  }
+
+  function getLatestReadyOcrText() {
+    for (let index = state.attachments.length - 1; index >= 0; index -= 1) {
+      const attachment = state.attachments[index];
+      if (attachment && attachment.status === "ready" && String(attachment.ocrText || "").trim()) {
+        return String(attachment.ocrText || "").trim();
+      }
+    }
+    return "";
+  }
+
+  function resolveAccountKeyFromContext(workspaceText, ocrText, userText) {
+    const userMatch = resolveNormalizedAccountKey(userText);
+    if (userMatch) return userMatch;
+
+    const latestOcrText = getLatestReadyOcrText();
+    const ocrMatch = resolveNormalizedAccountKey(latestOcrText || ocrText);
+    if (ocrMatch) return ocrMatch;
+
+    const workspace = String(workspaceText || "");
+    const explicitFields = [
+      extractWorkspaceFieldValue(workspace, "Customer Company Name"),
+      extractWorkspaceFieldValue(workspace, "Account Name")
+    ].filter(Boolean).join("\n");
+    const explicitMatch = resolveNormalizedAccountKey(explicitFields);
+    if (explicitMatch) return explicitMatch;
+
+    return resolveNormalizedAccountKey(workspaceText);
+  }
+
+  function maybeResetAiContextForAccountChange(currentAccountKey, mode) {
+    if (mode === "bridge" || !currentAccountKey) return;
+    const session = getActiveSession();
+    if (!session) return;
+
+    const previousAccountKey = normalizeText(session.lastPromptedAccount || "");
+    if (!previousAccountKey || previousAccountKey === currentAccountKey) return;
+
+    state.chatConversation = [];
+    state.pendingFreshAccountContext = true;
+    session.lastContextResetAt = String(Date.now());
+    persistConversation();
+    markActiveSessionUpdated();
+    showSnackbar("Detected a new account. AI context reset for a fresh ticket run.");
+  }
+
+  function splitWorkspaceIntoTicketBlocks(workspaceText) {
+    const raw = String(workspaceText || "").trim();
+    if (!raw) return [];
+    const pattern = /^Customer Company Name:\s*.*$/gim;
+    const starts = [];
+    let match;
+    while ((match = pattern.exec(raw))) {
+      starts.push(match.index);
+    }
+    if (!starts.length) return [];
+    return starts.map(function (start, index) {
+      const end = index + 1 < starts.length ? starts[index + 1] : raw.length;
+      return raw.slice(start, end).trim();
+    }).filter(Boolean);
+  }
+
+  function scopeWorkspaceForAccount(workspaceText, currentAccountKey) {
+    const workspace = String(workspaceText || "").trim();
+    if (!workspace) return "";
+
+    const blocks = splitWorkspaceIntoTicketBlocks(workspace);
+    if (!blocks.length) {
+      if (!currentAccountKey) return workspace;
+      const workspaceKey = resolveNormalizedAccountKey(workspace);
+      return !workspaceKey || workspaceKey === currentAccountKey ? workspace : "";
+    }
+
+    if (!currentAccountKey) {
+      return blocks[blocks.length - 1] || "";
+    }
+
+    const matchingBlocks = blocks.filter(function (block) {
+      return resolveNormalizedAccountKey(block) === currentAccountKey;
+    });
+    return matchingBlocks.length ? matchingBlocks[matchingBlocks.length - 1] : "";
+  }
+
+  function scopeOcrForAccount(currentAccountKey, accountJustChanged) {
+    const session = getActiveSession();
+    const resetAt = Number(session && session.lastContextResetAt || 0);
+    const scoped = state.attachments
+      .filter(function (attachment) {
+        return attachment && attachment.status === "ready" && String(attachment.ocrText || "").trim();
+      })
+      .filter(function (attachment) {
+        const ocrText = String(attachment.ocrText || "").trim();
+        if (!currentAccountKey) return !accountJustChanged;
+        if (resolveNormalizedAccountKey(ocrText) === currentAccountKey) return true;
+        if (!resetAt) return !accountJustChanged;
+        return Number(attachment.addedAt || 0) >= resetAt;
+      })
+      .map(function (attachment) {
+        return `[${attachment.name}]\n${String(attachment.ocrText || "").trim()}`;
+      });
+    return scoped.join("\n\n").trim();
+  }
+
+  function buildScopedPromptContext(userPrompt, currentAccountKey) {
+    const workspace = getMeaningfulWorkspaceText();
+    const scopedWorkspace = scopeWorkspaceForAccount(workspace, currentAccountKey);
+    const scopedOcrText = scopeOcrForAccount(currentAccountKey, state.pendingFreshAccountContext);
+    return {
+      workspace: scopedWorkspace,
+      ocrText: scopedOcrText,
+      userText: String(userPrompt || "").trim(),
+      freshAccountContext: Boolean(state.pendingFreshAccountContext)
+    };
+  }
+
+  function getAccountClassificationDecision(text) {
+    const resolved = resolveAccountFromText(text);
+    if (!resolved) return null;
+
+    const profile = buildAccountProfiles().get(normalizeText(resolved.account));
+    if (!profile) return null;
+
+    const typedRows = profile.rows.filter(function (row) { return row.solution === "MS" || row.solution === "SI"; });
+    const typeList = Array.from(profile.types.values()).sort();
+    const bestRow = findBestProjectRow(profile, normalizeText(text));
+    const newestRow = findNewestTypedRow(profile);
+
+    if (!typeList.length) return null;
+    if (typeList.length === 1) {
+      return {
+        account: profile.account,
+        customer: resolved.customer,
+        profileType: "single",
+        classification: typeList[0],
+        reason: "single-type account",
+        matchedRow: newestRow,
+        typedRows: typedRows.length,
+        msCount: typedRows.filter(function (row) { return row.solution === "MS"; }).length,
+        siCount: typedRows.filter(function (row) { return row.solution === "SI"; }).length
+      };
+    }
+
+    if (bestRow) {
+      return {
+        account: profile.account,
+        customer: resolved.customer,
+        profileType: "mixed-row-match",
+        classification: bestRow.solution,
+        reason: "project/product row match",
+        matchedRow: bestRow,
+        typedRows: typedRows.length
+      };
+    }
+
+    return {
+      account: profile.account,
+      customer: resolved.customer,
+      profileType: "mixed-fallback",
+      classification: newestRow ? newestRow.solution : typeList[0],
+      reason: "newest typed row fallback",
+      matchedRow: newestRow,
+      typedRows: typedRows.length
+    };
+  }
+
+  function formatRowSummary(row) {
+    if (!row) return "No typed row summary available.";
+    const detail = [row.project, row.year, row.solution, row.product].filter(Boolean).join(" | ");
+    return detail || row.account;
+  }
+
+  function buildAccountClassificationPrompt(text) {
+    const decision = getAccountClassificationDecision(text);
+    if (!decision) return "";
+
+    const prefix = decision.classification === "SI" ? "SANDZ-SI" : "SANDZ-MSDCO";
+    const subjectCustomerLabel = getCanonicalSubjectCustomerLabel(decision.account, decision.customer);
+    const normalizedContext = normalizeText(text);
+    const isSiDeliveryActivity = /(?:migration|cabling|implementation|deployment|refresh|upgrade|cutover|relocation|scheduled activity|project activity)/.test(normalizedContext);
+    const lines = [
+      "Account classification override:",
+      `- Resolved account from current ticket context: ${decision.account}`,
+      `- Final customer/company label to keep aligned: ${decision.customer}`,
+      `- In the Subject line, use this customer label: ${subjectCustomerLabel}`,
+      `- Output Solutions: ${decision.classification}`,
+      `- Use subject prefix: ${prefix}`,
+      `- Prefer ${decision.classification} row(s) for SE matching for this account.`,
+      "- Do not let generic wording alone override this account classification."
+    ];
+
+    if (decision.profileType === "single") {
+      lines.push(`- This account is single-type in the embedded SI/MS database: ${decision.msCount} MS row(s), ${decision.siCount} SI row(s).`);
+      lines.push(`- Use the account default classification unless the ticket text clearly proves a specific opposite-type row, which is not present for this account.`);
+    } else if (decision.profileType === "mixed-row-match") {
+      lines.push(`- This account has both MS and SI rows, and the best matching row is: ${formatRowSummary(decision.matchedRow)}`);
+      lines.push("- Use that matched row type consistently for Solutions, subject prefix, and SE row selection.");
+    } else {
+      lines.push(`- This account has both MS and SI rows, but no clear project/product row match was found in the current ticket context.`);
+      lines.push(`- Fallback to the newest typed row for this account: ${formatRowSummary(decision.matchedRow)}`);
+    }
+    if (isSiDeliveryActivity) {
+      lines.push("- The current ticket clearly describes one-time delivery work such as migration/cabling/project activity, so keep the final output aligned to the SI request flow and do not let generic managed-support wording pull it back to MS.");
+    }
+
+    return lines.join("\n");
   }
 
   function detectBridgeCallMode(text) {
@@ -1924,11 +2467,13 @@ Severity answer structure:
     });
   }
 
-  function buildPrompt(userPrompt, mode) {
+  function buildPrompt(userPrompt, mode, scopedContext) {
     const incidentSections = [];
-    const workspace = getMeaningfulWorkspaceText();
-    const ocrText = getCombinedOcrText().trim();
-    const userText = String(userPrompt || "").trim();
+    const context = scopedContext || {};
+    const workspace = String(context.workspace || "").trim();
+    const ocrText = String(context.ocrText || "").trim();
+    const userText = String(context.userText || userPrompt || "").trim();
+    const freshAccountContext = Boolean(context.freshAccountContext);
 
     if (workspace && normalizeText(workspace) !== normalizeText(DEFAULT_WORKSPACE)) {
       incidentSections.push("Workspace content:");
@@ -1954,10 +2499,14 @@ Severity answer structure:
       : mode === "qa"
         ? "Use conversational ticket Q&A mode. Answer plainly and do not generate a Zoho ticket code block unless explicitly requested."
         : "Use standard Zoho Desk ticket generation mode. Return only one ```text code block.";
+    const contextText = [workspace, ocrText, userText].filter(Boolean).join("\n\n");
+    const accountClassificationOverride = mode === "bridge" ? "" : buildAccountClassificationPrompt(contextText);
 
     const sections = [
       mode === "qa" ? ZOHO_QA_PROMPT : ZOHO_GENERATOR_PROMPT,
       modeInstruction,
+      freshAccountContext ? "Fresh account context: The latest user request is authoritative for this run. Ignore older visible ticket examples or screenshots from other accounts unless the user explicitly references them in the current message." : "",
+      accountClassificationOverride,
       "Incident details to process:"
     ];
     sections.push(incidentSections.join("\n\n"));
@@ -2002,10 +2551,110 @@ Severity answer structure:
       .replace(/\*\*(.*?)\*\*/g, "$1")
       .replace(/__(.*?)__/g, "$1")
       .replace(/^[ \t]*\*[ \t]+/gm, "- ")
-      .replace(/^[ \t]*•[ \t]+/gm, "- ")
+      .replace(/^[ \t]*â€¢[ \t]+/gm, "- ")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+  }
+
+  function formatWorkspaceSpacing(content) {
+    const raw = String(content || "").replace(/\r\n/g, "\n").trim();
+    if (!raw) return "";
+
+    const lines = raw.split("\n").map(function (line) {
+      return line.replace(/[ \t]+$/g, "");
+    });
+    const compact = [];
+    let previousBlank = false;
+
+    lines.forEach(function (line) {
+      const blank = !line.trim();
+      if (blank) {
+        if (!previousBlank) compact.push("");
+      } else {
+        compact.push(line);
+      }
+      previousBlank = blank;
+    });
+
+    const normalized = [];
+    const forceBlankBefore = new Set([
+      "SE's that can handle this ticket:",
+      "Viber Details/Zoho Comment on Ticket for initial troubleshooting:"
+    ]);
+
+    compact.forEach(function (line) {
+      const trimmed = line.trim();
+      if (
+        trimmed
+        && forceBlankBefore.has(trimmed)
+        && normalized.length
+        && normalized[normalized.length - 1] !== ""
+      ) {
+        normalized.push("");
+      }
+
+      if (trimmed === "Next Action:" || trimmed === "Possible Triage:") {
+        while (normalized.length && normalized[normalized.length - 1] === "") {
+          normalized.pop();
+        }
+      }
+
+      normalized.push(line);
+
+      if (
+        trimmed.startsWith("Issue/Request:")
+        || trimmed.startsWith("Next Action:")
+      ) {
+        if (normalized[normalized.length - 1] !== "") {
+          normalized.push("");
+        }
+      }
+    });
+
+    const finalLines = [];
+    previousBlank = false;
+    normalized.forEach(function (line) {
+      const blank = !String(line || "").trim();
+      if (blank) {
+        if (!previousBlank) finalLines.push("");
+      } else {
+        finalLines.push(line);
+      }
+      previousBlank = blank;
+    });
+
+    return finalLines.join("\n").trim();
+  }
+
+  function extractDescriptionFromSubject(subjectValue) {
+    const subject = String(subjectValue || "").trim();
+    if (!subject) return "";
+    const withoutTicketNo = subject.replace(/\s+Ticket\s+No\.\s*#.+$/i, "").trim();
+    const withoutPeriod = withoutTicketNo.replace(/\.$/, "").trim();
+    const match = withoutPeriod.match(/^SANDZ-(?:MSDCO|SI)-.+?-(.+)$/i);
+    return (match ? match[1] : withoutPeriod).trim();
+  }
+
+  function normalizeWorkspaceSubjectAndDescription(content) {
+    const raw = String(content || "").replace(/\r\n/g, "\n").trim();
+    if (!raw) return "";
+
+    const subjectMatch = raw.match(/^Subject:\s*(.+)$/im);
+    if (!subjectMatch) return raw;
+
+    const normalizedSubject = String(subjectMatch[1] || "").trim().replace(/\.$/, "");
+    const normalizedDescription = extractDescriptionFromSubject(normalizedSubject);
+    let updated = raw.replace(/^Subject:\s*.+$/im, `Subject: ${normalizedSubject}`);
+    if (normalizedDescription) {
+      if (/^Description:\s*.*$/im.test(updated)) {
+        updated = updated.replace(/^Description:\s*.*$/im, `Description: ${normalizedDescription}`);
+      }
+      if (/^Issue Description:\s*.*$/im.test(updated)) {
+        updated = updated.replace(/^Issue Description:\s*.*$/im, `Issue Description: ${normalizedDescription}`);
+      }
+    }
+    return updated;
   }
 
   function extractWorkspaceContentFromReply(replyText) {
@@ -2014,10 +2663,10 @@ Severity answer structure:
 
     const fencedMatch = raw.match(/```text\s*([\s\S]*?)```/i) || raw.match(/```\s*([\s\S]*?)```/);
     if (fencedMatch) {
-      return String(fencedMatch[1] || "").trim();
+      return formatWorkspaceSpacing(normalizeWorkspaceSubjectAndDescription(String(fencedMatch[1] || "")));
     }
 
-    return raw;
+    return formatWorkspaceSpacing(normalizeWorkspaceSubjectAndDescription(raw));
   }
 
   function updateWorkspaceFromAssistantReply(replyText) {
@@ -2098,15 +2747,18 @@ Severity answer structure:
 
     try {
       const workspaceText = getMeaningfulWorkspaceText();
-      const ocrText = getCombinedOcrText().trim();
-      const combinedInput = [workspaceText, ocrText, userText].filter(Boolean).join("\n\n");
+      const ocrText = getLatestReadyOcrText() || getCombinedOcrText().trim();
+      const mode = detectInteractionMode(userText, workspaceText, ocrText);
+      const currentAccountKey = resolveAccountKeyFromContext(workspaceText, ocrText, userText);
+      maybeResetAiContextForAccountChange(currentAccountKey, mode);
+      const scopedContext = buildScopedPromptContext(userText, currentAccountKey);
+      const combinedInput = [scopedContext.workspace, scopedContext.ocrText, scopedContext.userText].filter(Boolean).join("\n\n");
       if (!hasUsableIncidentDetails(combinedInput)) {
         addMessage(EMPTY_INCIDENT_PROMPT, "ai");
         return;
       }
 
-      const mode = detectInteractionMode(userText, workspaceText, ocrText);
-      const prompt = buildPrompt(userText, mode);
+      const prompt = buildPrompt(userText, mode, scopedContext);
       const reply = await fetchGeminiResponse(prompt);
       const normalizedReply = normalizeAssistantOutput(reply, mode);
       state.chatConversation.push({
@@ -2118,6 +2770,14 @@ Severity answer structure:
         parts: [{ text: normalizedReply }]
       });
       persistConversation();
+      if (mode !== "bridge") {
+        const session = getActiveSession();
+        if (session) {
+          session.lastPromptedAccount = currentAccountKey;
+          markActiveSessionUpdated();
+        }
+        state.pendingFreshAccountContext = false;
+      }
       addMessage(normalizedReply, "ai");
       if (mode === "standard") {
         updateWorkspaceFromAssistantReply(normalizedReply);
@@ -2132,6 +2792,13 @@ Severity answer structure:
   function clearChatHistory() {
     $("chat-messages").innerHTML = "";
     state.chatConversation = [];
+    state.pendingFreshAccountContext = false;
+    const session = getActiveSession();
+    if (session) {
+      session.lastPromptedAccount = "";
+      session.lastContextResetAt = "";
+      markActiveSessionUpdated();
+    }
     persistChatMessages();
     persistConversation();
     closeClearChatModal();
@@ -2384,3 +3051,5 @@ Severity answer structure:
   window.restoreFromDiff = restoreFromDiff;
   window.closeClearChatModal = closeClearChatModal;
 }());
+
+
