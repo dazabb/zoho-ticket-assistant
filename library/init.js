@@ -1,16 +1,16 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const STORAGE_KEYS = {
     workspace: "ztaWorkspaceContent",
-    theme: "ztaTheme",
+    theme: "mauAppearanceV07",
     readOnly: "ztaReadOnly",
     autocomplete: "ztaAutocomplete",
     apiKey: "ztaGeminiApiKey",
     chatMessages: "ztaChatMessages",
     chatConversation: "ztaChatConversation",
     attachments: "ztaAttachmentSummaries",
-    chatVisible: "ztaChatVisible",
+    chatVisible: "mauChatVisibleV07",
     sessions: "ztaChatSessions",
     activeSessionId: "ztaActiveChatSessionId",
     lastProfileId: "ztaLastProfileId"
@@ -41,19 +41,16 @@
   ]);
 
   const DEFAULT_THEME = "ace/theme/github_light_default";
-  const DEFAULT_WORKSPACE = `Paste the ticket details, email content, monitoring alert, customer request, images, or bridge-call notes here.
+  const DEFAULT_WORKSPACE = `INCIDENT NOTES
 
-Example input:
-- customer/company name
-- ticket number
-- affected host, VM, IP, job, or application
-- exact error or alert
-- impact and urgency
-- images
+Customer / account:
+Ticket number:
+Affected system:
+Issue / alert:
+Impact:
+Troubleshooting performed:
 
-The assistant will generate:
-1. Zoho ticket auto-fill
-2. Viber Details/Zoho Comment on Ticket for initial troubleshooting
+Paste the original alert or email details below.
 `;
   const EMPTY_INCIDENT_PROMPT = "Please paste the ticket details, email content, alert, request, images, or bridge-call notes so I can generate the Zoho ticket auto-fill.";
   const ACCOUNT_ALIAS_RULES = [
@@ -157,13 +154,13 @@ The assistant will generate:
     /\bdraft\b.*\bticket\b/i
   ];
   const PROMPT_ONLY_MARKERS = [
-    "execution instruction â€” do not review this prompt",
-    "zoho desk ticket auto-fill assistant â€” production system prompt",
+    "execution instruction — do not review this prompt",
+    "zoho desk ticket auto-fill assistant — production system prompt",
     "required output format",
-    "embedded customer database â€” may 2026",
+    "embedded customer database — may 2026",
     "[paste incident details here]"
   ];
-  const ZOHO_GENERATOR_PROMPT = String.raw`# EXECUTION INSTRUCTION â€” DO NOT REVIEW THIS PROMPT
+  const ZOHO_GENERATOR_PROMPT = String.raw`# EXECUTION INSTRUCTION — DO NOT REVIEW THIS PROMPT
 
 This text is not a prompt review request.
 
@@ -193,9 +190,14 @@ Required behavior:
 - Never invent customer, account, SE, PM/SD, severity, priority, or category values.
 - Follow the severity matrix in this prompt.
 - Return deterministic structured output.
+- Use only the visible incident evidence; do not invent ticket numbers, affected hosts, customer names, engineer assignments, troubleshooting performed, or confirmed causes.
+- Keep Zoho output separate from customer-facing messages. Do not place internal triage bullets into customer emails.
+- Use normal UTF-8 punctuation. Bullets should use '- ' in the response rather than corrupted encoding symbols.
 
 Required standard output:
 - Return only one Markdown text code block.
+- The user's SANDZ account/platform rules always override old, generic platform keyword defaults.
+- For existing OPEN incident with the same affected host and error, recommend continuing ticket tracking; use Existing Incident Ticket in the internal note, not New Incident Ticket.
 - Keep the exact field order:
 Customer Company Name:
 Account Name:
@@ -210,9 +212,11 @@ Issue Subcategory:
 Severity:
 Priority:
 Supported Portfolio:
+Technology/Platform:
 Solutions:
 SE's that can handle this ticket:
 PM/SD of this account:
+Ticket Owner:
 
 Viber Details/Zoho Comment on Ticket for initial troubleshooting:
 - The Viber Details/Zoho Comment output must use a full structured block, not a short bullet-only summary.
@@ -229,12 +233,12 @@ Viber Details/Zoho Comment on Ticket for initial troubleshooting:
   Issue/Request: <clear operational summary>
   Next Action: <single escalation or monitoring sentence>
   Possible Triage:
-  â€¢ <source or screenshot review instruction>
-  â€¢ <if/then decision instruction>
-  â€¢ <client confirmation or recent-change question>
-  â€¢ <Teams/Zoom or screenshot instruction when more visibility is needed>
-  â€¢ <L2/assigned SE initial-assistance instruction>
-  â€¢ <stop-and-escalate boundary>
+  • <source or screenshot review instruction>
+  • <if/then decision instruction>
+  • <client confirmation or recent-change question>
+  • <Teams/Zoom or screenshot instruction when more visibility is needed>
+  • <L2/assigned SE initial-assistance instruction>
+  • <stop-and-escalate boundary>
 - Do not end the Viber section after 2 or 3 short bullets.
 - Do not replace the named subsections with flat top-level bullets for normal ticket generation.
 
@@ -294,10 +298,11 @@ Customer/company output rules:
 - Canonical subject customer labels include: East West Bank -> EWB, BCDA -> BCDA, Okada Manila -> Okada, Monde/Monde Nissin -> Monde Nissin, National Reinsurance Corp. -> NatRe, GMA Network Inc. -> GMA, BPI Tokyo Century -> BPI Tokyo Century, HONDA -> HONDA, Cebu Air, Inc. -> Cebu Air, Inc., Pascual -> Pascual Lab, DSWD -> DSWD, Orix -> ORIX, Philippine Stock Exchange -> PSE, ANGELES ELECTRIC -> ANGELES ELECTRIC, RADIUS TELECOMS INC. -> Radius Telecoms Inc., BPI -> BPI.
 
 Account Name rule:
-- Use <Customer Company Name> - Sandz when a customer is identified.
-- For AMDOCS-specific cases, output Account Name: AMDOCS - Sandz.
-- Build Account Name from the resolved single customer/company label, not from a combined alias.
-- Account Name remains part of the workspace output for reference, but the Create Ticket autofill does not populate manual-only Zoho fields such as Department, Account Name, Contact Name, Email, Phone, or Mobile Number.
+- The January–October 2026 ticket history export has Customer Company Name and Subject columns but does NOT provide Zoho's exact Account Name field.
+- Use the exact verified Zoho Account Name ONLY when it appears in the SANDZ reference or is explicitly supplied as confirmed by the user.
+- Do not guess Account Name by adding " - Sandz" to Customer Company Name or copying a historical subject label.
+- If not verified, write Account Name: Verify exact account in Zoho Desk. The Create Ticket autofill should leave unverified Account Name empty for manual selection.
+- Never combine two different customers into one Account Name. The Create Ticket autofill does not populate manual-only fields such as Department, Contact Name, Email, Phone, or Mobile Number.
 
 SE and PM/SD matching rules:
 - Resolve SE's that can handle this ticket from the SI and MS Customer Database.
@@ -318,10 +323,11 @@ Subject rules:
 - For mapped accounts, the subject customer label must use the canonical subject customer label exactly and must not be freely title-cased.
 - Do not wrap the customer label or SubjectName in parentheses.
 - Do not end the subject with a trailing period.
-- If ticket number exists:
-<Subject Prefix>-<Subject Customer Label>-<SubjectName> Ticket No. #<ticket number>
-- Otherwise:
-<Subject Prefix>-<Subject Customer Label>-<SubjectName>
+- ALWAYS use this Subject format whether a ticket number exists or not:
+<Subject Prefix>-<Subject Customer Label>-<Concise SubjectName>
+- NEVER append Ticket No. #111743, Ticket #111743, a ticket number, or a case reference to Subject. Existing ticket IDs belong in the Ticket No. field within the internal Zoho/Viber comment, and may appear in a requested customer email, NOT in Subject.
+- For RackWare Stage 1 sync failure on mkt-prod-sapb1, use a short title such as SANDZ-MSDCO-BPI Tokyo Century-RackWare Stage 1 Sync Failed - mkt-prod-sapb1; omit Stage 1 if not supported by the source.
+- Avoid copying long forwarded RMM/Wave/Host bracket labels into Subject when one named workload is sufficient.
 - For scheduled activities and other date-sensitive planned work, include the schedule in the subject when it is clearly stated and operationally important.
 - Scheduled activity base format:
 <Subject Prefix>-<Subject Customer Label>-<Activity Name>.
@@ -406,6 +412,7 @@ Backup incident mapping rules:
 - For backup-related incidents, do not automatically keep Backup - Incident when the strongest visible symptom is connectivity failure.
 - If the ticket explicitly shows connection refused, failed telnet, port inaccessible, port closed, unreachable service, unreachable endpoint, firewall/path blocking, or other clear network-path evidence, output Issue Category: Network - Incident.
 - For that backup-connectivity incident pattern, output Issue Subcategory: Network Connection.
+- EXCEPTION: RackWare RMM Wave Sync / Stage 1 or Stage 2 replication alerts are DRaaS, not BaaS. Never apply generic backup connectivity defaults to RackWare replication.
 - Keep Supported Portfolio: (BaaS) Backup as a Service and Solutions: MS for that backup-connectivity incident pattern.
 - For backup offload failures caused by repository pressure, capacity tier problems, local repository nearly full state, or S3-compatible offload failures, output Supported Portfolio: (BaaS) Backup as a Service.
 - For that same incident type, output Issue Category: Storage - Incident.
@@ -464,6 +471,7 @@ Viber Details / Zoho Comment rules:
   - Stop L1/L1.5 triage and escalate before any retry, offload rerun, repository change, storage cleanup, policy change, service restart, or console-side remediation
 
 Supported Portfolio keyword guidance:
+- RackWare RMM, wave synchronization, replication (including Stage 1 / Stage 2) -> (DRaaS) Disaster Recovery as a Service (takes precedence over generic backup keyword rules)
 - backup, acronis, atempo, veeam, arcserve, rubrik -> (BaaS) Backup as a Service
 - storage, nas, san, powerstore, unity, netapp, synology -> (ESTaaS) Enterprise Storage as a Service
 - compute, server, node -> (CaaS) Compute as a Service
@@ -498,7 +506,7 @@ Priority consistency rules:
 - When Severity is Sev3, output Priority: Medium.
 - When Severity is Sev4, output Priority: Low.
 
-Embedded Customer Database â€” May 2026
+Embedded Customer Database — May 2026
 
 SI and MS Customer Database:
 BCDA | BCDA / Integrated Cloud Backup Project Phase 2 | 2025 | MS | Atempo / Acronis | Aeron Villanueva | EJ Remolona
@@ -722,6 +730,35 @@ EMD | PM/SD Lian
 WATSONS | PM/SD Cha
 BOTR | PM/SD Lian`;
 
+  const CLIENT_EMAIL_PROMPT = String.raw`You are writing a customer-facing technical support email on behalf of the MAU/SANDZ service desk.
+
+Write like a real technical support engineer using the user's example, not like an AI chatbot. Keep it polite, brief, specific, and natural. Plain email text, not a code block. No headings such as "Analysis" or "Summary", no fabricated root cause, and no unrelated troubleshooting checklist.
+
+Preferred structure:
+Hi Sir Rustom, [only if the recipient name is explicitly Rustom; otherwise match the provided name/title or use Hi Team,]
+Good Day!
+
+We received a [monitoring platform] alert for [affected system] indicating the following error:
+Error: [exact visible error text]
+Details: [exact visible error detail, if available]
+[Describe the observed failure, affected source/destination, file system, progress, and impact only where evidenced.]
+Please be informed that ticket #[number] has been logged for your reference. [Only if a ticket number is explicitly provided; otherwise omit the whole sentence.]
+We will coordinate with a Service Engineer to assist with your concern. [Only promise this if coordination has been requested or is the stated next step. Otherwise state the next step conservatively.]
+For any further questions or concerns, please reply to this email.
+Thank you.
+
+Rules:
+- Keep exact error codes, paths, timestamps, system names, source and target names; do not paraphrase machine identifiers.
+- The user's provided RackWare example is a tone and structure reference only; NEVER reuse its ticket number, hostname, client, percentage, or error unless they are actually present in this incident.
+- No engineer signature or address; users add their own signature in Zoho Desk.
+- If the recipient name is not supplied, use "Hi Team,".
+- If no ticket number is provided, do not invent one; omit the ticket number sentence.
+- Do not claim a ticket has been logged or a service engineer engaged unless the source explicitly indicates it.
+- For unconfirmed causes, write observations only. Do not promise resolution time.
+- Keep paragraphs short and use normal punctuation; do not include literal Markdown symbols such as ** or backticks in the email itself.
+- Return only the customer-ready email text, with no framing or prefatory commentary.
+`;
+
   const ZOHO_QA_PROMPT = String.raw`You are a senior L3-style IT support engineer answering questions for L1/L1.5 technicians.
 
 Your job in this mode is to answer questions about the current ticket, workspace, customer/account mapping, SE selection, PM/SD mapping, subject formatting, category/subcategory choice, severity, priority, supported portfolio, triage logic, likely cause, safer next steps, workaround ideas, replacement options, escalation timing, and whether specific workspace field values are really the best choice for this ticket.
@@ -808,6 +845,7 @@ Severity answer structure:
     activeSessionId: "",
     suppressSessionPersistence: false,
     isSending: false,
+    outputMode: "zoho",
     apiKey: "",
     chatVisible: true,
     activeProfileId: "",
@@ -874,8 +912,117 @@ Severity answer structure:
       .replace(/'/g, "&#39;");
   }
 
-  function formatMessageContent(text) {
-    const raw = String(text || "");
+  function repairText(value) {
+    return String(value || "")
+      .replace(/â€¢/g, "-")
+      .replace(/â€”/g, "—")
+      .replace(/â€“/g, "–")
+      .replace(/â€™/g, "’")
+      .replace(/â€œ/g, "“")
+      .replace(/â€/g, "”")
+      .replace(/â€˜/g, "‘")
+      .replace(/Â·/g, "·")
+      .replace(/\r\n/g, "\n");
+  }
+
+  const TICKET_FIELD_NAMES = ["Customer Company Name", "Account Name", "Subject", "Description", "Ticket Category", "Issue Category", "Issue Subcategory", "Issue Sub-Category", "Severity", "Priority", "Supported Portfolio", "Technology/Platform", "Ticket Owner", "Solutions", "SE's that can handle this ticket", "PM/SD of this account"];
+  const SHORT_FIELDS = new Set(["Customer Company Name", "Account Name", "Ticket Category", "Issue Category", "Issue Subcategory", "Issue Sub-Category", "Severity", "Priority", "Supported Portfolio", "Technology/Platform", "Ticket Owner", "Solutions"]);
+
+  function renderSupportNotes(notes) {
+    let html = "";
+    let items = [];
+    const flushItems = function () {
+      if (items.length) { html += `<ul>${items.map(function (item) { return `<li>${escapeHtml(item)}</li>`; }).join("")}</ul>`; items = []; }
+    };
+    for (const rawLine of repairText(notes).split("\n")) {
+      const line = rawLine.trim();
+      if (!line) { flushItems(); continue; }
+      if (/^(?:-|•|\*)\s+/.test(line)) { items.push(line.replace(/^(?:-|•|\*)\s+/, "")); continue; }
+      flushItems();
+      if (/^(?:New (?:Incident|Request) Ticket|Issue\/Request:|Next Action:|Possible Triage:|Observed Issue:|Capture\/Document:|Escalation Decision:)/i.test(line)) {
+        const pos = line.indexOf(":");
+        if (pos >= 0) html += `<p><strong>${escapeHtml(line.slice(0, pos + 1))}</strong> ${escapeHtml(line.slice(pos + 1).trim())}</p>`;
+        else html += `<div class="result-note-title">${escapeHtml(line)}</div>`;
+      } else {
+        html += `<p>${escapeHtml(line)}</p>`;
+      }
+    }
+    flushItems();
+    return html;
+  }
+
+  function parseTicketReply(rawText) {
+    const raw = repairText(rawText).trim();
+    const body = raw.replace(/^```(?:text)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    if (!/^(?:Customer Company Name|Account Name|Subject):/m.test(body)) return null;
+    const lines = body.split("\n");
+    const fields = [];
+    const notes = [];
+    let inNotes = false;
+    for (const line of lines) {
+      if (/^Viber Details\/Zoho Comment on Ticket for initial troubleshooting:/i.test(line.trim())) { inNotes = true; continue; }
+      if (inNotes) { notes.push(line); continue; }
+      const match = line.match(/^([^:]+):\s*(.*)$/);
+      if (match && TICKET_FIELD_NAMES.some(function (f) { return f.toLowerCase() === match[1].trim().toLowerCase(); })) {
+        fields.push({name:match[1].trim(), value:match[2].trim()});
+      } else if (fields.length && line.trim()) {
+        fields[fields.length-1].value += "\n" + line.trim();
+      }
+    }
+    if (fields.length < 4) return null;
+    // Sanitize older saved AI replies too, not only newly generated ones.
+    const subjectField = fields.find(function (field) { return field.name.toLowerCase() === "subject"; });
+    let safeBody = body;
+    if (subjectField && window.MAUSandzTicketRules) {
+      const originalSubject = subjectField.value;
+      const cleanSubject = window.MAUSandzTicketRules.normalizeSubject(originalSubject,body);
+      subjectField.value = cleanSubject;
+      if (cleanSubject !== originalSubject) {
+        safeBody = safeBody.replace(/^(Subject:\s*).+$/m, function (_, prefix) { return prefix + cleanSubject; });
+      }
+    }
+    return {raw:safeBody,fields,notes:notes.join("\n").trim()};
+  }
+
+  function renderTicketReply(parsed) {
+    const source = escapeHtml(parsed.raw);
+    const sections = [
+      {title:"Ticket details",keys:["Customer Company Name","Account Name","Subject","Description"]},
+      {title:"Zoho classification",keys:["Ticket Category","Issue Category","Issue Subcategory","Issue Sub-Category","Severity","Priority","Supported Portfolio","Technology/Platform","Ticket Owner","Solutions"]},
+      {title:"Assignment · reference contacts (verify current ownership)",keys:["SE's that can handle this ticket","PM/SD of this account"]}
+    ];
+    let html = `<section class="ticket-result-card"><div class="result-header"><div class="result-heading"><span class="result-icon">Z</span><div><span class="result-title">Zoho Ticket Autofill</span><span class="result-subtitle">Ticket fields and internal notes</span></div></div><div class="result-action-set"><button type="button" class="result-copy" data-draft-email="1">Draft client email</button><button type="button" class="result-copy" data-copy-result="ticket">Copy Zoho fields</button></div></div>`;
+    for (const section of sections) {
+      const fields = parsed.fields.filter(function (field) { return section.keys.includes(field.name); });
+      if (!fields.length) continue;
+      html += `<section class="result-section"><h3 class="result-section-title">${section.title}</h3><div class="result-field-grid">`;
+      for (const field of fields) {
+        const wide = !SHORT_FIELDS.has(field.name);
+        html += `<div class="result-field ${wide?'wide':''}"><span class="result-field-name">${escapeHtml(field.name)}</span><span class="result-field-value ${field.name==='Description'?'issue':''}">${escapeHtml(field.value)}</span></div>`;
+      }
+      html += `</div></section>`;
+    }
+    if (parsed.notes) html += `<section class="result-section"><div class="result-note-heading"><h3 class="result-section-title">Internal comment / Viber troubleshooting</h3><button type="button" class="result-copy" data-copy-result="notes">Copy comment</button></div><div class="result-note">${renderSupportNotes(parsed.notes)}</div><textarea class="result-notes-source" hidden>${escapeHtml(parsed.notes)}</textarea></section>`;
+    html += `<details class="result-raw"><summary>View original text for Zoho autofill</summary><textarea class="result-raw-source" readonly aria-label="Original Zoho autofill text">${source}</textarea></details></section>`;
+    return html;
+  }
+
+  function renderClientEmail(rawText) {
+    const raw = repairText(rawText).trim().replace(/^```(?:text)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    const stripped = raw.replace(/\*\*(.*?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
+    const formatted = escapeHtml(stripped).split(/\n\s*\n/).map(function (paragraph) {
+      return `<p>${paragraph.replace(/\n/g, "<br>")}</p>`;
+    }).join("");
+    return `<section class="client-email-result"><div class="result-header"><div class="result-heading"><span class="result-icon">✉</span><div><span class="result-title">Client email draft</span><span class="result-subtitle">Review names and ticket number before sending</span></div></div><button type="button" class="result-copy" data-copy-result="email">Copy email</button></div><div class="email-letter">${formatted}</div><details class="result-raw"><summary>View plain email text</summary><textarea class="result-raw-source" readonly aria-label="Plain client email">${escapeHtml(stripped)}</textarea></details></section>`;
+  }
+
+  function formatMessageContent(text, role, mode) {
+    const raw = repairText(text);
+    if (role === "ai" && mode === "email") return renderClientEmail(raw);
+    if (role === "ai") {
+      const ticket = parseTicketReply(raw);
+      if (ticket) return renderTicketReply(ticket);
+    }
     const parts = raw.split(/```/);
     return parts.map(function (part, index) {
       if (index % 2 === 1) {
@@ -883,6 +1030,32 @@ Severity answer structure:
       }
       return escapeHtml(part).replace(/\n/g, "<br>");
     }).join("");
+  }
+
+  function upgradeSavedTicketMessages() {
+    const container = $("chat-messages");
+    if (!container) return;
+    for (const message of container.querySelectorAll(".message.ai, .message.restored")) {
+      const bubble = message.querySelector(".message-bubble");
+      const code = bubble && bubble.querySelector("pre code");
+      if (!code || bubble.querySelector(".ticket-result-card")) continue;
+      const parsed = parseTicketReply(code.textContent);
+      if (parsed) bubble.innerHTML = renderTicketReply(parsed);
+    }
+  }
+
+  async function copyResponseValue(text) {
+    const value = repairText(text).trim();
+    if (!value) return false;
+    try { await navigator.clipboard.writeText(value); return true; }
+    catch(error) {
+      const textArea = document.createElement("textarea");
+      textArea.value = value;
+      textArea.style.position = "fixed"; textArea.style.opacity = "0";
+      document.body.appendChild(textArea);textArea.select();
+      const worked = document.execCommand("copy"); textArea.remove();
+      return worked;
+    }
   }
 
   function showSnackbar(message, timeout) {
@@ -1030,11 +1203,13 @@ Severity answer structure:
       ? session.chatConversation.slice()
       : [];
     if (window.editor) {
-      window.editor.setValue(String(session.workspace || DEFAULT_WORKSPACE), -1);
+      session.workspace = repairText(session.workspace || DEFAULT_WORKSPACE);
+      window.editor.setValue(session.workspace, -1);
       window.lastSavedCode = getEditorText();
     }
     if ($("chat-messages")) {
-      $("chat-messages").innerHTML = String(session.chatMessages || "");
+      $("chat-messages").innerHTML = repairText(session.chatMessages || "");
+      upgradeSavedTicketMessages();
       $("chat-messages").scrollTop = $("chat-messages").scrollHeight;
     }
     state.suppressSessionPersistence = false;
@@ -1119,7 +1294,7 @@ Severity answer structure:
       : "Untitled";
     const profile = getProfileById(state.activeProfileId);
     const profileLabel = profile ? ` - ${getProfileDisplayName(profile)}` : "";
-    document.title = `${fileLabel} - Zoho Desk Ticket Assistant BETA${profileLabel}`;
+    document.title = `MAU Operation Desk — ${fileLabel}${profileLabel}`;
   }
 
   function updateProfileStatusUi() {
@@ -1130,10 +1305,25 @@ Severity answer structure:
     if (!profile) {
       status.hidden = true;
       name.textContent = "Guest";
+      if ($("sidebarProfileName")) $("sidebarProfileName").textContent = "Select profile";
+      if ($("sidebarProfileAvatar")) $("sidebarProfileAvatar").textContent = "M";
       return;
     }
     status.hidden = false;
     name.textContent = getProfileDisplayName(profile);
+    const sidebarName = $("sidebarProfileName");
+    const sidebarAvatar = $("sidebarProfileAvatar");
+    if (sidebarName) sidebarName.textContent = getProfileDisplayName(profile);
+    if (sidebarAvatar) {
+      sidebarAvatar.textContent = "";
+      if (profile.image) {
+        const photo = document.createElement("img");
+        photo.src = profile.image;
+        photo.alt = "";
+        photo.style.objectPosition = profile.position || "center";
+        sidebarAvatar.appendChild(photo);
+      } else sidebarAvatar.textContent = "G";
+    }
   }
 
   function showProfileChooser() {
@@ -1224,6 +1414,7 @@ Severity answer structure:
     if (!profile) return;
     const rememberProfile = !profile.guest;
 
+    if (window.MAUUserGemini) window.MAUUserGemini.clearKey();
     state.activeProfileId = profile.id;
     state.bootProfileId = profile.id;
     state.fileHandle = null;
@@ -1245,6 +1436,7 @@ Severity answer structure:
     saveCurrentCodeToHistory(true);
     updateProfileStatusUi();
     updateDocumentTitle();
+    if (window.MAUUserGemini) window.MAUUserGemini.setProfile(profile.id);
     hideProfileChooser();
 
     if (!(options && options.silent)) {
@@ -1253,6 +1445,7 @@ Severity answer structure:
   }
 
   function logoutProfile() {
+    if (window.MAUUserGemini) { window.MAUUserGemini.clearKey(); window.MAUUserGemini.setProfile(""); }
     safeLocalStorageRemove(STORAGE_KEYS.lastProfileId);
     clearRuntimeAttachments();
     renderAttachmentTray();
@@ -1283,16 +1476,18 @@ Severity answer structure:
       button.className = `profile-card${profile.guest ? " guest" : ""}`;
       button.setAttribute("data-profile-id", profile.id);
 
-      const avatar = document.createElement(profile.image ? "img" : "div");
+      const avatar = document.createElement("div");
       avatar.className = "profile-avatar";
       if (profile.image) {
-        avatar.src = profile.image;
-        avatar.alt = profile.name;
-        avatar.style.objectPosition = profile.position || "center center";
-        avatar.style.transform = "";
+        const photo = document.createElement("img");
+        photo.src = profile.image;
+        photo.alt = "";
+        photo.loading = "eager";
+        photo.decoding = "async";
+        photo.style.objectPosition = profile.position || "center";
+        avatar.appendChild(photo);
       } else {
-        avatar.style.background = profile.accent;
-        avatar.textContent = profile.guest ? "G" : getProfileInitials(profile.name);
+        avatar.textContent = "G";
       }
 
       const name = document.createElement("div");
@@ -1329,10 +1524,10 @@ Severity answer structure:
     if (!pane || !chat) return;
 
     state.chatVisible = !!isVisible;
-    chat.style.display = state.chatVisible ? "block" : "none";
-    pane.style.width = state.chatVisible ? "65%" : "100%";
-    pane.style.flex = state.chatVisible ? "0 0 65%" : "1 1 auto";
+    chat.style.display = state.chatVisible ? "flex" : "none";
+    chat.setAttribute("aria-hidden", state.chatVisible ? "false" : "true");
     safeLocalStorageSet(STORAGE_KEYS.chatVisible, String(state.chatVisible));
+    if (window.editor && typeof window.editor.resize === "function") requestAnimationFrame(() => window.editor.resize());
   }
 
   function getEditorText() {
@@ -1365,7 +1560,9 @@ Severity answer structure:
     window.currentTheme = themeName;
     window.editor.setTheme(themeName);
     document.body.classList.toggle("theme-dark", themeName === "ace/theme/monokai");
+    document.body.classList.toggle("theme-light", themeName !== "ace/theme/monokai");
     safeLocalStorageSet(STORAGE_KEYS.theme, themeName);
+    if (typeof window.syncThemePreferenceButton === "function") window.syncThemePreferenceButton();
   }
 
   function openModal() {
@@ -1386,14 +1583,12 @@ Severity answer structure:
   }
 
   function openApiModal() {
-    $("APIKey").value = state.apiKey;
     $("modalApi").style.display = "flex";
-    $("APIKey").focus();
+    if (window.MAUUserGemini) window.MAUUserGemini.refreshUi();
   }
 
   function closeApiModal() {
     $("modalApi").style.display = "none";
-    saveApiKey();
   }
 
   function openClearChatModal() {
@@ -1417,19 +1612,11 @@ Severity answer structure:
     applyTheme(window.currentTheme === "ace/theme/monokai" ? DEFAULT_THEME : "ace/theme/monokai");
   }
 
-  function saveApiKey() {
-    state.apiKey = String($("APIKey").value || "").trim();
-    setGlobalLocalStorage(STORAGE_KEYS.apiKey, state.apiKey);
-  }
-
-  function getApiKey() {
-    return state.apiKey || getGlobalLocalStorage(STORAGE_KEYS.apiKey, "");
-  }
-
+  // A user's key is held only in memory; it is never persisted to a workspace or chat session.
   function ensureApiKeyForAiAction() {
-    if (getApiKey()) return true;
+    if (window.MAUUserGemini && window.MAUUserGemini.hasKey()) return true;
+    showSnackbar("Enter your own Gemini API key to use the assistant.");
     openApiModal();
-    showSnackbar("Add your Gemini API key to continue.");
     return false;
   }
 
@@ -1690,7 +1877,7 @@ Severity answer structure:
 
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
-    bubble.innerHTML = formatMessageContent(text);
+    bubble.innerHTML = formatMessageContent(text, safeRole, options && options.mode);
     message.appendChild(bubble);
 
     if (options && (options.footerText || options.diffIndex !== undefined)) {
@@ -1991,6 +2178,14 @@ Severity answer structure:
   }
 
   function getCanonicalSubjectCustomerLabel(account, customer) {
+    // Historical naming conventions take precedence over free-form title case.
+    const history = window.MAUAccountHistory;
+    if (history) {
+      for (const raw of [customer, account]) {
+        const mapped = history.findByCompany(String(raw || "").replace(/\s*[-–]\s*Sandz\s*$/i,""));
+        if (mapped) return mapped.subject;
+      }
+    }
     const candidates = [
       normalizeText(account),
       normalizeText(customer)
@@ -2494,6 +2689,14 @@ Severity answer structure:
       incidentSections.push(userText);
     }
 
+    if (mode === "email") {
+      const emailContext = [workspace, ocrText, userText].filter(Boolean).join("\n\n");
+      const contactPolicy = window.MAUSandzTicketRules
+        ? window.MAUSandzTicketRules.guidanceFor(emailContext)
+        : "";
+      return [CLIENT_EMAIL_PROMPT, "Current SANDZ account, incident, and customer-email requirements:\n" + contactPolicy, "Incident details to process:", incidentSections.join("\n\n")].join("\n\n");
+    }
+
     const modeInstruction = mode === "bridge"
       ? "Use Bridge Call / Screenshot Assistance Mode. Return only the bridge-call structure."
       : mode === "qa"
@@ -2502,8 +2705,12 @@ Severity answer structure:
     const contextText = [workspace, ocrText, userText].filter(Boolean).join("\n\n");
     const accountClassificationOverride = mode === "bridge" ? "" : buildAccountClassificationPrompt(contextText);
 
+    const sandzGuidance = window.MAUSandzTicketRules
+      ? window.MAUSandzTicketRules.guidanceFor(contextText)
+      : "";
     const sections = [
       mode === "qa" ? ZOHO_QA_PROMPT : ZOHO_GENERATOR_PROMPT,
+      "Important current SANDZ classification and support policy:\n" + sandzGuidance,
       modeInstruction,
       freshAccountContext ? "Fresh account context: The latest user request is authoritative for this run. Ignore older visible ticket examples or screenshots from other accounts unless the user explicitly references them in the current message." : "",
       accountClassificationOverride,
@@ -2514,7 +2721,7 @@ Severity answer structure:
   }
 
   function normalizeAssistantOutput(rawReply, mode) {
-    const reply = String(rawReply || "").trim();
+    const reply = repairText(rawReply).trim();
     if (!reply) {
       if (mode === "bridge") {
         return "Bridge Call / Screenshot Triage:\nObserved Issue: Unable to determine from the provided details.\nNext Safe Step for L1/L1.5: Ask the client to provide the next screenshot or screenshare the exact read-only error/status page.\nCapture/Document: Record the exact error, timestamp, affected system, and visible status shown on screen.\nEscalation Decision: Ask L2/assigned SE for initial guidance if the next required action is unclear.";
@@ -2523,6 +2730,10 @@ Severity answer structure:
         return "I need a bit more ticket context before I can answer that clearly. Point me to the specific field, mapping, category, severity, priority, or account detail you want explained.";
       }
       return `\`\`\`text\n${EMPTY_INCIDENT_PROMPT}\n\`\`\``;
+    }
+
+    if (mode === "email") {
+      return reply.replace(/^```(?:text)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
     }
 
     if (mode === "bridge") {
@@ -2551,7 +2762,7 @@ Severity answer structure:
       .replace(/\*\*(.*?)\*\*/g, "$1")
       .replace(/__(.*?)__/g, "$1")
       .replace(/^[ \t]*\*[ \t]+/gm, "- ")
-      .replace(/^[ \t]*â€¢[ \t]+/gm, "- ")
+      .replace(/^[ \t]*•[ \t]+/gm, "- ")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
@@ -2643,7 +2854,9 @@ Severity answer structure:
     const subjectMatch = raw.match(/^Subject:\s*(.+)$/im);
     if (!subjectMatch) return raw;
 
-    const normalizedSubject = String(subjectMatch[1] || "").trim().replace(/\.$/, "");
+    const normalizedSubject = window.MAUSandzTicketRules
+      ? window.MAUSandzTicketRules.normalizeSubject(subjectMatch[1],raw)
+      : String(subjectMatch[1] || "").trim().replace(/\s+Ticket\s+No\.\s*#?\d+\s*$/i, "").replace(/\.$/, "");
     const normalizedDescription = extractDescriptionFromSubject(normalizedSubject);
     let updated = raw.replace(/^Subject:\s*.+$/im, `Subject: ${normalizedSubject}`);
     if (normalizedDescription) {
@@ -2678,55 +2891,21 @@ Severity answer structure:
     showSnackbar("Workspace updated from the latest assistant response.");
   }
 
-  async function fetchGeminiResponse(prompt) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      openApiModal();
-      throw new Error("Add your Gemini API key to continue.");
-    }
-
+  async function fetchTeamAiResponse(prompt) {
+    if (!window.MAUUserGemini) throw new Error("Gemini API module is unavailable.");
     const model = $("my-select-dropdown").value;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
-      },
-      body: JSON.stringify({
-        contents: state.chatConversation.concat([{
-          role: "user",
-          parts: [{ text: prompt }]
-        }])
-      })
+    const history = state.chatConversation.slice(-8).map(function (item) {
+      return {
+        role: item.role === "model" ? "model" : "user",
+        text: Array.isArray(item.parts) ? item.parts.map(p => p.text || "").join("\n") : ""
+      };
+    }).filter(item => item.text);
+    const result = await window.MAUUserGemini.generate({
+      model,
+      messages: history.concat([{role:"user", text:prompt}])
     });
-
-    if (!response.ok) {
-      let detail = "";
-      try {
-        const errorBody = await response.json();
-        detail = errorBody && errorBody.error && errorBody.error.message
-          ? ` ${errorBody.error.message}`
-          : "";
-      } catch (error) {}
-      throw new Error(`Gemini request failed (${response.status}).${detail}`);
-    }
-
-    const payload = await response.json();
-    const candidate = payload && payload.candidates && payload.candidates[0];
-    const parts = candidate && candidate.content && Array.isArray(candidate.content.parts)
-      ? candidate.content.parts
-      : [];
-    const text = parts
-      .map(function (part) { return part.text || ""; })
-      .join("\n")
-      .trim();
-
-    if (!text) {
-      throw new Error("Gemini returned an empty response.");
-    }
-
-    return text;
+    if (!result.text) throw new Error("Gemini returned an empty response.");
+    return result.text;
   }
 
   async function sendMessage() {
@@ -2748,19 +2927,26 @@ Severity answer structure:
     try {
       const workspaceText = getMeaningfulWorkspaceText();
       const ocrText = getLatestReadyOcrText() || getCombinedOcrText().trim();
-      const mode = detectInteractionMode(userText, workspaceText, ocrText);
+      const mode = state.outputMode === "email" ? "email" :
+        state.outputMode === "qa" ? "qa" : detectInteractionMode(userText, workspaceText, ocrText);
       const currentAccountKey = resolveAccountKeyFromContext(workspaceText, ocrText, userText);
       maybeResetAiContextForAccountChange(currentAccountKey, mode);
       const scopedContext = buildScopedPromptContext(userText, currentAccountKey);
       const combinedInput = [scopedContext.workspace, scopedContext.ocrText, scopedContext.userText].filter(Boolean).join("\n\n");
-      if (!hasUsableIncidentDetails(combinedInput)) {
+      if (!hasUsableIncidentDetails(combinedInput) && mode !== "qa") {
         addMessage(EMPTY_INCIDENT_PROMPT, "ai");
         return;
       }
 
       const prompt = buildPrompt(userText, mode, scopedContext);
-      const reply = await fetchGeminiResponse(prompt);
-      const normalizedReply = normalizeAssistantOutput(reply, mode);
+      const reply = await fetchTeamAiResponse(prompt);
+      let normalizedReply = normalizeAssistantOutput(reply, mode);
+      let classificationCorrections = [];
+      if (mode === "standard" && window.MAUSandzTicketRules) {
+        const checked = window.MAUSandzTicketRules.fixZohoText(normalizedReply, combinedInput);
+        normalizedReply = checked.text;
+        classificationCorrections = checked.changes;
+      }
       state.chatConversation.push({
         role: "user",
         parts: [{ text: prompt }]
@@ -2778,7 +2964,10 @@ Severity answer structure:
         }
         state.pendingFreshAccountContext = false;
       }
-      addMessage(normalizedReply, "ai");
+      addMessage(normalizedReply, "ai", {mode:mode});
+      if (classificationCorrections.length) {
+        showSnackbar("Verified SANDZ ticket mapping: " + classificationCorrections.join(", "));
+      }
       if (mode === "standard") {
         updateWorkspaceFromAssistantReply(normalizedReply);
       }
@@ -2934,11 +3123,13 @@ Severity answer structure:
   function initializeRuntime() {
     if (state.initialized) return;
     state.initialized = true;
-    state.bootProfileId = getRememberedProfileId();
+    // Always display the original picture-based profile chooser at startup.
+    state.bootProfileId = "";
     cleanupLegacyProfileApiKeys();
+    try { localStorage.removeItem(STORAGE_KEYS.apiKey); } catch (error) {}
 
-    state.apiKey = getGlobalLocalStorage(STORAGE_KEYS.apiKey, typeof window.myGeminiAPIKey === "string" ? window.myGeminiAPIKey : "");
-    $("APIKey").value = state.apiKey;
+    state.apiKey = "";
+    // Legacy stored keys are deleted. New user keys are only held in memory.
     renderProfileChooser();
     renderAttachmentTray();
 
@@ -2949,6 +3140,27 @@ Severity answer structure:
     if (!state.listenersBound) {
       state.listenersBound = true;
       $("send-button").addEventListener("click", sendMessage);
+      document.querySelectorAll("[data-output-mode]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          state.outputMode = button.dataset.outputMode;
+          document.querySelectorAll("[data-output-mode]").forEach(function (item) {
+            const selected = item === button;
+            item.classList.toggle("active", selected);
+            item.setAttribute("aria-pressed", String(selected));
+          });
+          const help = $("outputModeHelp");
+          if (help) help.textContent = state.outputMode === "email"
+            ? "Draft a customer-ready email from the incident details. No invented names, ticket numbers, or signature."
+            : state.outputMode === "qa"
+              ? "Ask about likely causes, safe first checks, or the best Zoho classification."
+              : "Generate Zoho fields and a separate internal troubleshooting comment.";
+          $("chat-input").placeholder = state.outputMode === "email"
+            ? "Paste the alert and details. Add the recipient and ticket number if available..."
+            : state.outputMode === "qa"
+              ? "Ask about symptoms, ticket classification, or next safe troubleshooting steps..."
+              : "Paste the monitoring alert, customer request, or incident details...";
+        });
+      });
       $("clear-chat-btn").addEventListener("click", openClearChatModal);
       $("confirmClearChatBtn").addEventListener("click", clearChatHistory);
       $("chatSessionSelect").addEventListener("change", function (event) {
@@ -2958,15 +3170,34 @@ Severity answer structure:
       $("renameChatSessionBtn").addEventListener("click", renameChatSession);
       $("deleteChatSessionBtn").addEventListener("click", deleteChatSession);
       $("logoutProfileBtn").addEventListener("click", logoutProfile);
+      $("sidebarSwitchProfileBtn")?.addEventListener("click", logoutProfile);
       $("attachImageBtn").addEventListener("click", function () { $("imageAttachmentInput").click(); });
       $("imageAttachmentInput").addEventListener("change", function (event) {
         handleImageFiles(event.target.files);
         event.target.value = "";
       });
       $("clearAttachmentsBtn").addEventListener("click", clearAttachments);
-      $("APIKey").addEventListener("change", saveApiKey);
-      $("APIKey").addEventListener("blur", saveApiKey);
-      $("chat-messages").addEventListener("click", function (event) {
+      $("chat-messages").addEventListener("click", async function (event) {
+        const emailButton = event.target.closest("[data-draft-email]");
+        if (emailButton) {
+          const selectEmail = document.querySelector('[data-output-mode="email"]');
+          if (selectEmail) selectEmail.click();
+          const input = $("chat-input");
+          if (input) {
+            input.value = "Draft a client email from the current Zoho ticket details. Include a ticket number or recipient only if supplied. ";
+            input.focus();
+          }
+          showSnackbar("Client Email selected. Add any missing recipient or ticket number, then send.");
+          return;
+        }
+        const copyButton = event.target.closest("[data-copy-result]");
+        if (copyButton) {
+          const card = copyButton.closest(".ticket-result-card, .client-email-result");
+          const textArea = card && card.querySelector(copyButton.dataset.copyResult === "notes" ? ".result-notes-source" : ".result-raw-source");
+          const copied = await copyResponseValue(textArea ? textArea.value : "");
+          showSnackbar(copied ? "Copied. Paste into Zoho Desk after reviewing." : "Unable to copy automatically. Use View original text instead.");
+          return;
+        }
         const button = event.target.closest("[data-diff-index]");
         if (!button) return;
         const index = Number(button.getAttribute("data-diff-index"));

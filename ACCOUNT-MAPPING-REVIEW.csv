@@ -1,0 +1,5 @@
+﻿Ticket ID,Export Customer Company Name,Customer indicated by subject,Original subject,Recommended handling
+87311,Out of Scope - BPI,BPI,SANDZ-MSDCO-BPI-BIZ_DEV has entered free capacity emergency state VPSA NAS_Enterprise_RHOCP_DEV at bpi-04. Ticket No#9521027 (INTERNAL),Historical subject is shared with a distinct scope; confirm exact customer rather than merging.
+96639,RADIUS TELECOMS INC.,BPI Tokyo Century (BPITC),SANDZ-MSDCO-BPI Tokyo Century. - [ RMM - rmm-server ] - [ Wave - bpictmktfs2 ] - [ Host - bpictmktfs2-src ] - RMM Wave item sync alert - Failed,Company and subject conflict; verify affected workload and Zoho account before autofill.
+100858,Honda Parts Manufacturing Corporation,HONDA,SANDZ-MSDCO-HONDA-[Failed] HPI-LO-GPSERVER2016-AGENT-BACKUP (1 objects) 1 failed,Historical subject is shared with a distinct scope; confirm exact customer rather than merging.
+111551,BPI Tokyo Century (BPITC),RADIUS TELECOMS INC.,SANDZ-MSDCO-Radius Telecoms Inc. -[ RMM - radbscrmm01 ] - [ Wave - radiuspr1 ] - [ Host - radiuspr1-src ] - RMM Wave item sync alert - Failed,Company and subject conflict; verify affected workload and Zoho account before autofill.

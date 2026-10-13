@@ -1,0 +1,39 @@
+MAU Operation Desk v1.0 — Zoho Ticket + Client Email
+
+MAU OPERATION DESK v0.9 — PERSONAL GEMINI API KEYS
+
+1. Extract all files to a folder.
+2. Double-click START-MAU-DESK.bat (Windows + Node.js 20+), then open http://127.0.0.1:3000.
+   Alternatively open index.html directly; some browsers may restrict local file API requests.
+3. Select your pictured profile.
+4. Click API key, then Get Gemini API key ↗ to open Google AI Studio (https://aistudio.google.com/apikey). Create or copy your personal key, return to MAU, and paste it into the field.
+5. Click Use this key, close the dialog, and use the AI chat.
+6. Click API key / Usage to see requests made through this browser, tokens reported by Google, and next reset.
+
+No shared API key, MAU server AI connection, or .env file is needed.
+Your personal Gemini key stays in the active tab's JavaScript memory only, never localStorage or the ZIP. It is cleared on refresh, tab close or profile switching. The key is necessarily sent by the browser to Google's Gemini API and can be seen in your own browser's developer tools or potentially browser extensions. Do not use on a shared/untrusted device.
+
+USAGE: App counters are local only; Google rate limits apply by Google Cloud project, including activity outside MAU. Daily request quotas reset at midnight Pacific Time. Confirm actual usage/limits at https://aistudio.google.com/usage.
+
+CAUTION: Gemini is not guaranteed to be free. Use an eligible free-tier project without billing to avoid charges. Google free-tier submissions may be used to improve its products. Avoid confidential ticket data unless your organization's policy permits it.
+
+The Zoho ticket assistant is a client-side tool; profile choices are not access controls. Host only in an approved environment. This version doesn't create a secure shared team login.
+
+Read README-UI-v1.0.md for the new output controls.
+
+MAU v1.1: RackWare replication alerts are checked against SANDZ DRaaS mapping before Zoho autofill. See README-UI-v1.1.md.
+
+
+VERSION 1.2: Concise Zoho ticket subjects; ticket numbers appear only in internal notes or requested customer messages, never in the Subject. See README-UI-v1.2.md.
+
+ACCOUNT NAMES & SUBJECT MAPPING (v1.3)
+- Workspace tools > Account reference: search 39 historical customer groups and copy a preferred subject prefix.
+- Check ACCOUNT-MAPPING-REFERENCE.csv for normalized customer, subject label, and verified Zoho Account Name availability.
+- Check ACCOUNT-MAPPING-REVIEW.csv for four historical inconsistencies requiring human verification.
+- The original export did not contain actual Zoho Account Name values for most customers; never guess them.
+
+VIBER FOLLOW-UP v1.4
+---------------------
+Open Reporting -> Viber Follow-up to upload a Zoho ticket CSV and prepare a copyable Viber follow-up list. See README-VIBER-FOLLOWUP-v1.4.md for instructions.
+
+MAU v1.5 Viber Follow-up updates: See README-VIBER-FOLLOWUP-v1.5.md for closure-date filtering, 3-day nearing-overdue default, and previous Viber remarks import.

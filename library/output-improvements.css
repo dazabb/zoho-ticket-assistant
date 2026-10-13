@@ -1,0 +1,63 @@
+/* Version 1.0: readable ticket / email layouts, light-first. */
+:root{--answer-ink:#243149;--answer-label:#556376;--answer-code:#f5f7fb}
+body.theme-dark{--answer-ink:#f1f3f7;--answer-label:#b6bfd0;--answer-code:#1a202c}
+.output-selector{flex:0 0 auto;display:flex;gap:7px;align-items:center;padding:12px 24px 6px;flex-wrap:wrap;background:var(--mau-surface)}
+.output-selector-label{color:var(--mau-secondary-text);font-size:11px;font-weight:750;letter-spacing:.1em;margin-right:8px}
+.output-option{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:7px 14px;border:1px solid var(--mau-border);border-radius:999px;background:var(--mau-surface);color:var(--mau-secondary-text);font-size:13px;font-weight:620;transition:background .15s ease,border-color .15s ease}
+.output-option:hover{background:var(--mau-hover);color:var(--mau-text)}
+.output-option.active{background:var(--mau-selected);border-color:var(--mau-selected);color:var(--mau-text)}
+.output-help{flex:0 0 auto;font-size:12px;color:var(--mau-secondary-text);padding:0 26px 10px;border-bottom:1px solid var(--mau-border)}
+.chat-messages{padding:20px max(24px,calc((100% - 875px)/2));}
+.chat-messages .message.ai,.chat-messages .message.restored{max-width:100%;width:100%;align-items:stretch}
+.chat-messages .message.ai .message-bubble,.chat-messages .message.restored .message-bubble{max-width:100%!important;width:100%;min-width:0;border:none;background:transparent;padding:0;box-shadow:none;color:var(--mau-text);font-size:15px;line-height:1.7;overflow-wrap:anywhere}
+.chat-messages .message.user .message-bubble{max-width:min(88%,700px);font-size:14px;line-height:1.6;padding:12px 16px}
+.ticket-result-card,.client-email-result,.answer-result-card{border:1px solid var(--mau-border);border-radius:16px;background:var(--mau-surface);box-shadow:var(--mau-shadow);overflow:hidden;max-width:100%;margin:4px 0 16px}
+.result-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 19px;background:var(--mau-secondary);border-bottom:1px solid var(--mau-border)}
+.result-heading{display:flex;align-items:center;gap:10px;min-width:0}
+.result-icon{display:grid;place-items:center;width:34px;height:34px;flex:none;background:var(--mau-selected);color:var(--mau-text);border-radius:10px;font-weight:650;font-size:14px}
+.result-title{display:block;font-size:15px;font-weight:750;color:var(--mau-text);line-height:1.3}
+.result-subtitle{display:block;font-size:12px;color:var(--mau-secondary-text);margin-top:2px}
+.result-copy{min-height:35px;border:1px solid var(--mau-border);border-radius:9px;background:var(--mau-surface);color:var(--mau-text);font-size:12px;font-weight:680;cursor:pointer;padding:6px 12px;white-space:nowrap}
+.result-copy:hover{background:var(--mau-hover)}
+.result-section{padding:18px 21px;border-bottom:1px solid var(--mau-border)}
+.result-section:last-child{border-bottom:0}
+.result-section-title{font-size:12px;font-weight:800;letter-spacing:.035em;text-transform:uppercase;color:var(--mau-secondary-text);margin:0 0 12px}
+.result-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px}
+.result-field{padding:10px 12px;border:1px solid var(--mau-border);border-radius:10px;background:var(--mau-secondary);min-width:0}
+.result-field.wide{grid-column:1/-1}
+.result-field-name{display:block;font-size:11px;color:var(--mau-secondary-text);font-weight:680;margin-bottom:5px}
+.result-field-value{display:block;font-size:14px;color:var(--mau-text);font-weight:600;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap}
+.result-field-value.issue{font-weight:500;line-height:1.7}
+.result-note{font-size:14px;line-height:1.7;color:var(--answer-ink)}
+.result-note p{margin:0 0 12px}
+.result-note p:last-child{margin-bottom:0}
+.result-note ul{margin:4px 0 14px;padding-left:22px}
+.result-note li{margin:6px 0;white-space:normal;overflow-wrap:anywhere}
+.result-note-title{font-weight:750;font-size:13px;color:var(--mau-text);margin:14px 0 7px}
+.result-raw{margin:0;padding:0 21px 18px;border-top:1px solid var(--mau-border)}
+.result-raw summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--mau-secondary-text);padding:13px 0}
+.result-raw-source{display:block;width:100%;min-height:180px;max-height:320px;resize:vertical;background:var(--answer-code);color:var(--answer-ink);border:1px solid var(--mau-border);border-radius:9px;padding:15px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre;overflow:auto}
+.email-letter{padding:26px 28px;font-size:15px;line-height:1.85;color:var(--answer-ink)}
+.email-letter p{margin:0 0 17px;overflow-wrap:anywhere;white-space:pre-wrap}
+.email-letter p:last-child{margin-bottom:0}
+.email-letter strong{font-weight:720;color:var(--mau-text)}
+.email-letter code{font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--answer-ink);background:var(--answer-code);padding:2px 4px;border-radius:4px;white-space:pre-wrap;overflow-wrap:anywhere}
+.answer-result-body{padding:20px 24px;color:var(--answer-ink);font-size:15px;line-height:1.8}
+.answer-result-body p{margin:0 0 12px}
+.answer-result-body h4{margin:18px 0 8px;color:var(--mau-text);font-size:14px}
+.answer-result-body li{margin:4px 0}
+.chat-messages .message.ai .message-bubble pre{max-width:100%;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+/* Keep the sidebar usable when browser UI or narrow screens crowd the header. */
+#container{min-width:0}
+.app-sidebar{box-sizing:border-box;overflow-x:hidden}
+#toolbar{min-width:0}
+.toolbar-actions{max-width:100%;min-width:0;flex-wrap:wrap;justify-content:flex-end}
+@media(max-width:1250px){.toolbar-actions{gap:5px}}
+@media(max-width:1000px){.result-field-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){.output-selector{padding:10px 13px 8px}.output-option{font-size:12px;padding:6px 10px}.output-help{padding:0 14px 10px}.chat-messages{padding:14px}.result-field-grid{grid-template-columns:1fr}.result-section{padding:14px}.result-header{padding:12px}.result-copy{padding:7px;font-size:11px}.email-letter{padding:18px}.workspace-title{font-size:17px}}
+.result-action-set,.result-note-heading{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.result-note-heading{margin-bottom:10px}
+.result-note-heading h3{margin:0}
+html,body{max-width:100%;overflow-x:clip!important}
+#container{max-width:100%;overflow-x:clip}
+@media(max-width:680px){.result-header{flex-wrap:wrap}.result-action-set{width:100%;justify-content:flex-start}}

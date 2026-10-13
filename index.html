@@ -5,14 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="library/rte-icon.png" type="image/x-icon">
   <link rel="stylesheet" href="library/design.css">
-  <title>Untitled - Zoho Desk Ticket Assistant BETA</title>
+  <title>MAU Operation Desk — Ticket Assistant</title>
+  <link rel="stylesheet" href="library/refresh.css">
+  <link rel="stylesheet" href="library/account-reference.css">
+  <link rel="stylesheet" href="library/output-improvements.css">
 </head>
 <body>
   <div class="modal-overlay profile-overlay" id="profileOverlay">
     <div class="profile-picker">
       <div class="profile-picker-header">
-        <h1>Who's using Ticket Assistant?</h1>
-        <p>Choose a profile to continue. Your named profile keeps its own chats, theme, and workspace in this browser.</p>
+        <h1>Choose your workspace profile</h1>
+        <p>Choose your profile to continue. Each profile has its own workspace, chats, theme, and usage counter on this device.</p>
       </div>
       <div class="profile-grid" id="profileGrid"></div>
     </div>
@@ -73,33 +76,37 @@
   </div>
 
   <div id="container">
+    <aside class="app-sidebar" id="appSidebar" aria-label="Main navigation">
+      <div class="sidebar-top">
+        <div class="side-identity"><div class="side-identity-mark">M</div><div><strong>MAU Operation Desk</strong><small>Internal operations workspace</small></div></div>
+        
+      </div>
+      <div class="side-section">Workspace</div>
+      <button type="button" class="side-link active" id="navTickets" aria-current="page"><span class="side-icon">◫</span><span class="side-label">Ticket Workspace</span></button>
+      <div class="side-section">Reporting</div>
+      <button type="button" class="side-link" id="navMonde"><span class="side-icon">◉</span><span class="side-label">Monde Nissin</span></button>
+      <button type="button" class="side-link" id="navFollowup"><span class="side-icon">☷</span><span class="side-label">Viber Follow-up</span></button>
+      
+      <button type="button" class="side-user-card" id="sidebarSwitchProfileBtn" title="Switch profile"><div class="side-user-avatar" id="sidebarProfileAvatar">M</div><div><strong id="sidebarProfileName">Select profile</strong><small>Switch profile</small></div></button>
+    </aside>
     <div id="toolbar">
-      <div class="toolbar-brand">
-        <img class="toolbar-logo" src="library/rte-icon.png" alt="Ticket Assistant icon">
-        <span class="toolbar-title">Ticket Assistant BETA</span>
+      <div class="toolbar-brand"><div class="toolbar-title" id="toolbarTitle">Ticket Workspace</div><span class="toolbar-divider">/</span><span class="toolbar-subtitle" id="toolbarSubtitle"></span></div>
+      <div class="toolbar-center-switch" role="tablist" aria-label="View switcher">
+        <button type="button" class="toolbar-view-pill active" id="topSwitchTickets" aria-selected="true">Workspace</button>
+        <button type="button" class="toolbar-view-pill" id="topSwitchMonde" aria-selected="false">Monde Report</button>
+        <button type="button" class="toolbar-view-pill" id="topSwitchFollowup" aria-selected="false">Viber Follow-up</button>
       </div>
       <div class="toolbar-actions">
-        <div class="toolbar-group">
-          <div class="profile-status" id="profileStatus" hidden>
-            <span class="profile-status-label">Profile</span>
-            <span class="profile-status-name" id="activeProfileName">Guest</span>
-            <button class="toolbar-btn profile-logout-btn" id="logoutProfileBtn" title="Log out of the current profile">Logout Profile</button>
+        <button type="button" class="theme-toggle" id="themePreferenceButton" aria-label="Switch to dark mode" title="Switch appearance"><span id="themePreferenceIcon">☾</span><span id="themePreferenceText">Dark mode</span></button>
+        <button type="button" class="toolbar-ai-launch" id="openTeamAiBtn" title="Jump to the AI assistant"><span class="status-dot" aria-hidden="true"></span> AI assistant</button>
+        <button type="button" class="toolbar-key-button" id="toolbarApiKeyBtn" title="Set your Gemini API key and view usage">API key <span id="toolbarApiStatus">Not set</span></button>
+        <div class="profile-status" id="profileStatus" hidden><span class="profile-status-label">Profile</span><span class="profile-status-name" id="activeProfileName">Guest</span><button class="toolbar-btn profile-logout-btn" id="logoutProfileBtn" title="Switch profile">Switch</button></div>
+        <details class="toolbar-more"><summary>Workspace tools <span aria-hidden="true">⌄</span></summary>
+          <div class="toolbar-menu">
+            <label class="menu-label">Saved ticket sessions</label><div class="session-controls"><select id="chatSessionSelect" aria-label="Saved chat sessions"></select><button class="toolbar-btn" id="newChatSessionBtn">New</button><button class="toolbar-btn" id="renameChatSessionBtn">Rename</button><button class="toolbar-btn" id="deleteChatSessionBtn">Delete</button></div>
+            <div class="toolbar-menu-grid"><button class="toolbar-btn" onclick="toggleTheme()">Theme</button><button class="toolbar-btn" onclick="openDocumentationModal()">Docs</button><button class="toolbar-btn api-btn" onclick="openApiModal()">API key & usage</button><button class="toolbar-btn assistant-btn" onclick="toggleDisplayChatBotContainer()">Assistant</button><button type="button" class="toolbar-btn" id="openAccountReferenceBtn">Account reference</button></div>
           </div>
-        </div>
-        <div class="toolbar-group">
-          <div class="session-controls" title="Saved chat sessions">
-            <select id="chatSessionSelect" aria-label="Saved chat sessions"></select>
-            <button class="toolbar-btn" title="Create a new chat session" id="newChatSessionBtn">New</button>
-            <button class="toolbar-btn" title="Rename the current chat session" id="renameChatSessionBtn">Rename</button>
-            <button class="toolbar-btn" title="Delete the current chat session" id="deleteChatSessionBtn">Delete</button>
-          </div>
-          <button class="toolbar-btn" title="Toggle theme" onclick="toggleTheme()">Theme</button>
-          <button class="toolbar-btn" title="Zoho Desk reference" onclick="openDocumentationModal()">Docs</button>
-        </div>
-        <div class="toolbar-group">
-          <button class="toolbar-btn api-btn" title="Put your API key here" onclick="openApiModal()">API Key</button>
-          <button class="toolbar-btn assistant-btn" title="Zoho Desk assistant" onclick="toggleDisplayChatBotContainer()">Assistant</button>
-        </div>
+        </details>
       </div>
     </div>
 
@@ -107,10 +114,12 @@
       <div id="workspacePane">
         <div id="workspaceHeader">
           <div class="workspace-copy">
+            
             <div class="workspace-title">Ticket Workspace</div>
-            <div class="workspace-subtitle">Store incident details, email content, images, bridge-call notes, and generated Zoho output here.</div>
+            <div class="workspace-subtitle"></div>
           </div>
           <div class="workspace-actions">
+            <button type="button" id="toggleNotesBtn" aria-expanded="true">Hide notes</button>
             <button id="createZohoTicketBtn" title="Open Zoho Desk and auto-fill the new ticket form from the workspace">Create Ticket</button>
           </div>
         </div>
@@ -133,23 +142,30 @@
 
       <div id="chatBotContainer">
         <div class="chat-section">
-          <div class="chat-messages" id="chat-messages"></div>
-          <div class="loading-indicator" id="loading-indicator">
-            AI is thinking <span class="first_dot">.</span><span class="second_dot">.</span><span class="third_dot">.</span>
-          </div>
-
           <div class="model-container">
             <div class="model-select-wrap">
-              <span class="model-label">Model</span>
-              <select id="my-select-dropdown">
-                <option value="gemini-flash-lite-latest" selected>gemini-flash-lite-latest</option>
-                <option value="gemini-flash-latest">gemini-flash-latest</option>
-              </select>
+              
+              <input type="hidden" id="my-select-dropdown" value="gemini-3.5-flash-lite">
+              <span class="gemini-model-name">Gemini</span>
+              
             </div>
-            <button id="clear-chat-btn" title="Clear chat messages">Clear</button>
+            <div class="model-tool-actions"><span id="usageCounterInline" class="usage-counter-inline" title="Requests completed in this browser today">0 today</span><button type="button" class="model-api-link" id="chatApiKeyBtn">API key</button><button id="clear-chat-btn" title="Clear chat messages">Clear chat</button></div>
+          </div>
+          <div class="output-selector" role="group" aria-label="Choose assistant output">
+            
+            <button type="button" class="output-option active" data-output-mode="zoho" aria-pressed="true">Zoho autofill</button>
+            <button type="button" class="output-option" data-output-mode="email" aria-pressed="false">Client email</button>
+            <button type="button" class="output-option" data-output-mode="qa" aria-pressed="false">Troubleshooting</button>
+          </div>
+          <div class="output-help" id="outputModeHelp" hidden></div>
+          <div class="chat-messages" id="chat-messages"></div>
+          <div class="loading-indicator" id="loading-indicator">
+            Thinking <span class="first_dot">.</span><span class="second_dot">.</span><span class="third_dot">.</span>
           </div>
 
-          <div id="attachmentPanel">
+          <details id="attachmentsDisclosure" class="attachments-disclosure">
+            <summary>＋ Screenshots</summary>
+            <div id="attachmentPanel">
             <div id="attachmentPanelHeader">
               <span class="attachment-panel-title">Screenshots <span id="attachmentCount"></span></span>
               <button id="clearAttachmentsBtn" title="Clear all attachments">Clear all</button>
@@ -157,45 +173,83 @@
             <div id="imageDropZone" title="Paste, drop, or browse for screenshots">
               <div class="drop-zone-icon">IMG</div>
               <div class="drop-zone-primary">Paste or drop screenshots here</div>
-              <div class="drop-zone-secondary">You can paste multiple images at once - OCR runs automatically</div>
+              
               <button id="attachImageBtn" type="button">Browse files</button>
             </div>
             <div id="attachmentTray"></div>
-          </div>
+            </div>
+          </details>
 
           <div class="chat-input-area">
-            <textarea id="chat-input" class="chat-input" placeholder="Paste ticket details, alerts, email content, images, or bridge-call notes..."></textarea>
+            <textarea id="chat-input" class="chat-input" placeholder="Paste the monitoring alert, customer request, or incident details..."></textarea>
             <button id="send-button" type="button" class="send-button" aria-label="Send message">Send</button>
           </div>
       </div>
       </div>
     </div>
 
+    <section id="reportingPane" aria-label="Monde Nissin reporting" hidden>
+      <iframe id="mondeFrame" src="reporting/monde.html" title="Monde Nissin daily Zerto reporting" loading="lazy"></iframe>
+    </section>
+    <section id="followupPane" aria-label="Viber follow-up reporting" hidden>
+      <iframe id="followupFrame" src="reporting/followup.html" title="Viber ticket follow-up report generator" loading="lazy"></iframe>
+    </section>
     <div id="statusBar" class="statusbardesign"></div>
   </div>
 
   <div class="modal-api-overlay" id="modalApi">
-    <div class="modal-api-box">
-      <button class="modal-api-close" onclick="closeApiModal()">x</button>
-      <div class="modal-api-header">
-        Add your Gemini API key.
-      </div>
+    <div class="modal-api-box ai-connection-dialog user-api-dialog">
+      <button class="modal-api-close" onclick="closeApiModal()" aria-label="Close API settings">×</button>
+      <div class="modal-api-header">Gemini API key & usage</div>
       <div class="modal-api-content">
-        <input type="text" name="api" placeholder="Put your API key here" value="" id="APIKey" />
-        <p>Get your API Key here at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">https://aistudio.google.com/apikey</a>
-        so the Zoho Desk assistant can generate ticket autofill output and troubleshooting notes.</p>
+        
+        <form id="userApiKeyForm" autocomplete="off" class="user-api-form">
+          <div class="user-api-label-row">
+            <label for="userGeminiApiKey">Your Gemini API key</label>
+            <a class="gemini-key-get-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" aria-label="Open Google AI Studio in a new tab to get your Gemini API key">Get Gemini API key <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="user-api-input-row"><input id="userGeminiApiKey" name="gemini-key" type="password" placeholder="Paste your Gemini API key" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="apiKeyPrivacy geminiKeyInstructions"><button type="button" id="toggleApiKeyVisibility" title="Show or hide key">Show</button></div>
+          <p class="gemini-key-instructions" id="geminiKeyInstructions" hidden></p>
+          <div class="user-api-actions"><button type="submit" id="saveUserGeminiKey">Use this key</button><button type="button" id="removeUserGeminiKey">Remove key</button></div>
+        </form>
+        <p class="api-key-feedback" id="userKeyStatus" role="status">No key entered for this profile.</p>
+        <details class="api-security"><summary>API key privacy</summary><p class="ai-fineprint" id="apiKeyPrivacy">Your key is used only in this browser tab and is cleared when you switch profiles or reload. Browser extensions and developer tools can access it. Do not include sensitive customer information.</p></details>
+        <div class="usage-panel">
+          <div class="usage-panel-head"><h3>Usage in MAU</h3><span class="usage-local-pill">This browser only</span></div>
+          <div class="usage-stats"><div><span>Successful requests today</span><strong id="usageRequestCount">0</strong></div><div><span>Tokens reported today</span><strong id="usageTokenCount">0</strong></div><div><span>Failed requests today</span><strong id="usageFailureCount">0</strong></div></div>
+          <div class="usage-reset"><span>Next daily quota reset</span><strong id="usageResetCountdown">Calculating…</strong><small id="usageResetTimestamp">Midnight Pacific Time</small></div>
+          
+          <a class="usage-external" target="_blank" rel="noopener noreferrer" href="https://aistudio.google.com/usage">View actual Google AI Studio usage ↗</a>
+          <button type="button" id="resetLocalUsageBtn" class="usage-reset-local" title="Clears the local MAU history, not your Google quota">Clear local usage history</button>
+        </div>
+        
       </div>
     </div>
   </div>
+  <dialog id="accountReferenceDialog" class="account-reference-dialog" aria-labelledby="accountReferenceTitle">
+    <div class="account-reference-heading">
+      <div><h2 id="accountReferenceTitle">Customer account reference</h2>
+      <p>Historical naming from 2,193 tickets · January–October 2026</p></div>
+      <button type="button" id="closeAccountReferenceBtn" aria-label="Close account reference">×</button>
+    </div>
+    <label class="account-reference-search-label" for="accountReferenceSearch">Find a customer, alias or subject label</label>
+    <input id="accountReferenceSearch" type="search" placeholder="Search account names or aliases" autocomplete="off">
+    <p class="account-reference-note">Subject labels follow historical naming. Exact Zoho Account Names appear only when separately verified. Confirm the incident workload before choosing a customer.</p>
+    <div id="accountReferenceRows" class="account-reference-rows" aria-live="polite"></div>
+  </dialog>
   <input type="file" id="imageAttachmentInput" accept="image/*" multiple hidden>
   <div id="snackbar"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsdiff/5.1.0/diff.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="library/zoho_desk_documentation.js"></script>
-  <script src="library/myGeminiAPIKey.js"></script>
+  <script src="library/user-gemini.js"></script>
+  <script src="library/account-history.js"></script>
+  <script src="library/sandz-ticket-rules.js"></script>
   <script src="library/init.js"></script>
   <script src="library/zoho-ui-autofill.js"></script>
+  <script src="library/navigation.js"></script>
+  <script src="library/account-reference.js"></script>
   <script>
     (function () {
       const aceScripts = [
@@ -255,6 +309,11 @@
           enableBasicAutocompletion: false,
           enableLiveAutocompletion: false,
           fontSize: "14px",
+          showGutter: false,
+          showLineNumbers: false,
+          highlightActiveLine: false,
+          wrap: true,
+          fontFamily: "Inter, Segoe UI, Arial, sans-serif",
         });
         editor.setValue(window.getInitialWorkspaceContent(), -1);
 
@@ -294,8 +353,11 @@
         });
 
         editor.setShowPrintMargin(false);
+        editor.session.setUseWrapMode(true);
         editor.getSession().setUseSoftTabs(false);
         document.body.classList.toggle("theme-dark", currentTheme === "ace/theme/monokai");
+        document.body.classList.toggle("theme-light", currentTheme !== "ace/theme/monokai");
+        if (typeof window.syncThemePreferenceButton === "function") window.syncThemePreferenceButton();
 
         if (typeof window.initializeTicketAssistantRuntime === "function") {
           window.initializeTicketAssistantRuntime();

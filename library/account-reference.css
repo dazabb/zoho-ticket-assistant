@@ -1,0 +1,24 @@
+/* Searchable read-only account mapping reference */
+.account-reference-dialog{border:1px solid var(--mau-border);border-radius:20px;background:var(--mau-surface);color:var(--mau-text);width:min(790px,calc(100vw - 32px));max-height:min(86vh,850px);padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.24)}
+.account-reference-dialog::backdrop{background:rgba(10,14,22,.55);backdrop-filter:blur(3px)}
+.account-reference-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+.account-reference-heading h2{font-size:21px;margin:0 0 7px;color:var(--mau-text)}
+.account-reference-heading p{margin:0 0 20px;color:var(--mau-secondary-text);font-size:12px}
+#closeAccountReferenceBtn{border:1px solid var(--mau-border);border-radius:50%;height:36px;width:36px;background:var(--mau-secondary);color:var(--mau-text);cursor:pointer;font-size:21px}
+.account-reference-search-label{display:block;font-size:12px;font-weight:650;margin-bottom:8px}
+#accountReferenceSearch{width:100%;padding:12px 14px;border-radius:11px;border:1px solid var(--mau-border);background:var(--mau-secondary);color:var(--mau-text);font-size:14px}
+.account-reference-note{font-size:12px;line-height:1.55;color:var(--mau-secondary-text);margin:12px 0 18px}
+.account-reference-rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;max-height:55vh;overflow:auto;padding:1px}
+.account-reference-row{min-width:0;border:1px solid var(--mau-border);border-radius:13px;padding:15px;background:var(--mau-secondary)}
+.account-reference-row-header{display:flex;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px;color:var(--mau-text)}
+.account-reference-row-header strong{font-size:14px;overflow-wrap:anywhere}
+.account-reference-count{white-space:nowrap;font-size:11px;color:var(--mau-secondary-text)}
+.account-reference-field{display:flex;flex-direction:column;gap:3px;margin:8px 0}
+.account-reference-field span{color:var(--mau-secondary-text);font-size:11px}
+.account-reference-field strong{font-size:12px;font-weight:650;color:var(--mau-text);overflow-wrap:anywhere}
+.account-reference-field strong.account-reference-review{color:#ac671b}
+.account-reference-row-note{font-size:11px;color:var(--mau-secondary-text);line-height:1.5;display:block;margin-top:8px}
+.account-reference-copy{margin-top:8px;border:1px solid var(--mau-border);background:var(--mau-surface);color:var(--mau-blue);padding:8px 11px;border-radius:9px;font-size:12px;cursor:pointer}
+.account-reference-copy:hover{background:var(--mau-hover)}
+.account-reference-empty{padding:20px;color:var(--mau-secondary-text)}
+@media(max-width:600px){.account-reference-dialog{padding:16px}.account-reference-rows{grid-template-columns:1fr;max-height:60vh}}

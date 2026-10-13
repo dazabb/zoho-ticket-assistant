@@ -848,7 +848,9 @@
   }
 
   function inferSubject(text, fields) {
-    if (fields.subject) return String(fields.subject || "").trim().replace(/\.$/, "");
+    if (fields.subject) return window.MAUSandzTicketRules
+      ? window.MAUSandzTicketRules.normalizeSubject(fields.subject, text)
+      : String(fields.subject || "").trim().replace(/\s+Ticket\s+No\.\s*#?\d+\s*$/i, "").replace(/\.$/, "");
     const lines = String(text || "")
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -869,6 +871,8 @@
 
   function buildZohoPayload(workspaceText) {
     const fields = parseWorkspace(workspaceText);
+    const sandzDecision = window.MAUSandzTicketRules ? window.MAUSandzTicketRules.getDecision(workspaceText) : null;
+    const isRackwareDrIncident = Boolean(sandzDecision && sandzDecision.drIncident);
     const profileSupportAgent = typeof window.getActiveSupportAgent === "function"
       ? normalizeSupportAgent(window.getActiveSupportAgent() || "")
       : "";
@@ -903,7 +907,7 @@
     const backupConnectivityIncident = isBackupConnectivityIncident(fields, workspaceText, description, ticketCategory);
     const preliminaryIssueSubCategory = normalizeIssueSubCategory(fields, description, ticketCategory, workspaceText);
     const storageCapacityBackupIncident = isStorageCapacityBackupIncident(fields, description, ticketCategory, preliminaryIssueSubCategory);
-    const normalizedIssueCategory = resolveValidIssueCategory(fields, description, ticketCategory, workspaceText, {
+    const normalizedIssueCategory = isRackwareDrIncident ? "Disaster Recovery - Incident" : resolveValidIssueCategory(fields, description, ticketCategory, workspaceText, {
       iaasHealthCheck,
       backupConnectivityIncident,
       restoreRequest,
@@ -912,7 +916,9 @@
       scheduledMaintenance,
       storageCapacityBackupIncident
     });
-    const issueSubCategory = resolveValidIssueSubCategory(fields, description, ticketCategory, workspaceText, normalizedIssueCategory, {
+    const issueSubCategory = isRackwareDrIncident
+      ? (sandzDecision.subcategory || (["Device Issue", "FailOver Issue", "Network Issue", "Performance Issue"].includes(fields.issueSubCategory) ? fields.issueSubCategory : ""))
+      : resolveValidIssueSubCategory(fields, description, ticketCategory, workspaceText, normalizedIssueCategory, {
       iaasHealthCheck,
       backupConnectivityIncident,
       restoreRequest,
@@ -922,6 +928,7 @@
       storageCapacityBackupIncident
     });
     const supportedPortfolio = firstNonEmpty(
+      isRackwareDrIncident ? "(DRaaS) Disaster Recovery as a Service" : "",
       backupConnectivityIncident ? "(BaaS) Backup as a Service" : "",
       String(resolvedSolutions || "").trim().toUpperCase() === "SI" ? "(SI) System Integration" : "",
       iaasHealthCheck ? "(IaaS) Infrastructure as a Service" : "",
@@ -931,7 +938,7 @@
     const severityLevel = fields.severityLevel || "";
     const priority = normalizePriority(severityLevel, fields.priority || "");
 
-    return {
+    const result = {
       version: 1,
       source: "Ticket Assistant",
       createdAt: new Date().toISOString(),
@@ -956,6 +963,10 @@
         "Issue Description": description,
       }
     };
+    if (window.MAUSandzTicketRules) {
+      return window.MAUSandzTicketRules.correctZohoPayload(result, workspaceText);
+    }
+    return result;
   }
 
   function base64UrlEncodeUnicode(text) {

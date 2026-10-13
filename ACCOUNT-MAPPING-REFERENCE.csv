@@ -1,0 +1,41 @@
+﻿Customer company from history (canonical),Historical tickets,Preferred subject label,Exact Zoho Account Name (if verified),Account name confidence,Accepted customer aliases,Subject aliases,Review notes
+East West Bank,691,EWB,East West Bank - Sandz,Verified from separate SANDZ reference,East West Bank; EWB; EastWest Bank,EWB,
+BCDA,376,BCDA,,Needs manual Zoho verification,BCDA; Bases Conversion and Development Authority,BCDA,
+RADIUS TELECOMS INC.,336,Radius Telecoms Inc.,RADIUS TELECOMS INC. - Sandz,Verified from separate SANDZ reference,RADIUS TELECOMS INC.; Radius Telecoms Inc.; Radius Telecoms; Radius,Radius Telecoms Inc.; RADIUS TELECOMS INC.; Radius,
+Monde Nissin,314,Monde Nissin,Monde Nissin - Sandz,Verified from separate SANDZ reference,Monde Nissin; Monde; Monde NIssin,Monde Nissin; Monde NIssin,
+BPI Tokyo Century,108,BPI Tokyo Century,BPI Tokyo Century (BPITC) - Sandz,Verified from separate SANDZ reference,BPI Tokyo Century (BPITC); BPI Tokyo Century; BPITC,BPI Tokyo Century; BPI Toyo Century; BPITC,Different company from BPI.
+National Reinsurance Corporation of the Philippines,85,NatRe,National Reinsurance Corporation of the Philippines - Sandz,Verified from separate SANDZ reference,National Reinsurance Corporation of the Philippines; NatRe; National Reinsurance Corp.; National Reinsurance Corporation,NatRe,
+"Pascual Laboratories, Inc.",47,Pascual Lab,,Needs manual Zoho verification,"Pascual Laboratories, Inc.; Pascual Lab; Pascual Laboratories; Pascual",Pascual Lab,
+GMA Network Inc.,40,GMA,GMA Network Inc. - Sandz,Verified from separate SANDZ reference,GMA Network Inc.; GMA Network Inc; GMA Network; GMA,GMA,
+Oona,34,Oona,,Needs manual Zoho verification,Oona; OONA; Ooona,Oona; OONA; Ooona,
+BPI,26,BPI,,Needs manual Zoho verification,BPI; Bank of the Philippine Islands,BPI,Different company from BPI Tokyo Century.
+Department of Energy,22,DOE,,Needs manual Zoho verification,Department of Energy; DOE,DOE,
+Angeles Electric,19,ANGELES ELECTRIC,,Needs manual Zoho verification,Angeles Electric; ANGELES ELECTRIC; Angeles Electric Corp; AEC,ANGELES ELECTRIC; Angeles Electric,
+DSWD,14,DSWD,,Needs manual Zoho verification,DSWD; DSWD 4A,DSWD; DSWD 4A,
+ORIX,13,ORIX,,Needs manual Zoho verification,ORIX; Orix,ORIX,
+"Cebu Air, Inc.",12,"Cebu Air, Inc.",,Needs manual Zoho verification,"Cebu Air, Inc.; Cebu Air Inc; Cebu Air; CebAir","Cebu Air, Inc.; Cebu Air, Inc; Cebu Air Inc.",
+HONDA,11,HONDA,,Needs manual Zoho verification,HONDA; Honda Cars; Honda Phils. Inc.,HONDA,Do not merge automatically with Honda Parts Manufacturing Corporation.
+CHINABANK,4,CHINABANK,,Needs manual Zoho verification,CHINABANK; China Bank,CHINABANK,
+Okada Manila,3,Okada,,Needs manual Zoho verification,Okada Manila; Okada; OKADA,Okada; OKADA,
+Philippine Stock Exchange,3,PSE,,Needs manual Zoho verification,Philippine Stock Exchange; PSE,PSE,
+WATSON,3,WATSON,,Needs manual Zoho verification,WATSON; Watson; Watsons,WATSON,"Historical export says WATSON, not WATSONS. Confirm exact Zoho account."
+"Amdocs Philippines, Inc.",2,AMDOCS,,Needs manual Zoho verification,"Amdocs Philippines, Inc.; AMDOCS; AMDOCS-SMART",AMDOCS,
+"First Sumiden Circuits, Inc.",2,FSCI,,Needs manual Zoho verification,"First Sumiden Circuits, Inc.; FSCI; First Sumiden",FSCI,
+JG Summit,2,JG Summit,,Needs manual Zoho verification,JG Summit,JG Summit,
+AMTI,1,AMTI,,Needs manual Zoho verification,"AMTI; Accent Micro Technologies, Inc.",AMTI,
+Bureau of the Treasury,1,Bureau of the Treasury,,Needs manual Zoho verification,Bureau of the Treasury; BOTR,Bureau of the Treasury; Bureau of the Treasuryt; BOTR,One historical subject contains a typo.
+CARD Bank,1,CARDBANK,,Needs manual Zoho verification,CARD Bank; Card Bank; CARDBANK,CARDBANK,
+COL,1,COL,,Needs manual Zoho verification,COL; COL Financial,COL,
+DBP,1,DBP,,Needs manual Zoho verification,DBP; Development Bank of the Philippines,DBP,
+Honda Parts Manufacturing Corporation,1,HONDA,,Needs manual Zoho verification,Honda Parts Manufacturing Corporation,HONDA,Do not automatically merge with HONDA; confirm customer.
+Out of Scope - BPI,1,BPI,,Needs manual Zoho verification,Out of Scope - BPI,BPI,Do not automatically reclassify out-of-scope ticket as in-scope BPI.
+PhilHealth,1,PHIC,,Needs manual Zoho verification,PhilHealth; PHIC,PHIC,
+Philippine Veterans Affairs Office,1,PVAO,,Needs manual Zoho verification,Philippine Veterans Affairs Office; PVAO,PVAO,
+RTVM,1,RTVM,,Needs manual Zoho verification,RTVM,RTVM,
+SMART,1,SMART,,Needs manual Zoho verification,SMART; Smart,SMART,
+Sunlife,1,Sunlife,,Needs manual Zoho verification,Sunlife; SunLife; Sun Life,Sunlife,
+Travellers International Hotel Group Inc,1,Travellers,,Needs manual Zoho verification,Travellers International Hotel Group Inc; Travellers,Travellers,
+UAS,1,UAS,,Needs manual Zoho verification,UAS,UAS,Historical ticket marks this account inactive; verify.
+Unionbank Twilio,1,Unionbank,,Needs manual Zoho verification,Unionbank Twilio,Unionbank,Check the service/account owner before autofill.
+Wilcon Depot Inc.,1,Wilcon,,Needs manual Zoho verification,Wilcon Depot Inc.; Wilcon,Wilcon,
+(Not recorded),10,,,Unmapped - do not guess,,,Export company value is a dash
