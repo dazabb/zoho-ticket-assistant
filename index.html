@@ -163,26 +163,13 @@
             Thinking <span class="first_dot">.</span><span class="second_dot">.</span><span class="third_dot">.</span>
           </div>
 
-          <details id="attachmentsDisclosure" class="attachments-disclosure">
-            <summary>＋ Screenshots</summary>
-            <div id="attachmentPanel">
-            <div id="attachmentPanelHeader">
-              <span class="attachment-panel-title">Screenshots <span id="attachmentCount"></span></span>
-              <button id="clearAttachmentsBtn" title="Clear all attachments">Clear all</button>
+          <div class="chat-input-area" id="chatComposer" aria-label="Chat message and screenshots">
+            <div class="composer-attachments" id="composerAttachments" hidden>
+              <div class="composer-attachment-heading"><span>Attached images <span id="attachmentCount"></span></span><button type="button" id="clearAttachmentsBtn">Remove all</button></div>
+              <div id="attachmentTray" class="composer-image-list" aria-label="Attached screenshots"></div>
             </div>
-            <div id="imageDropZone" title="Paste, drop, or browse for screenshots">
-              <div class="drop-zone-icon">IMG</div>
-              <div class="drop-zone-primary">Paste or drop screenshots here</div>
-              
-              <button id="attachImageBtn" type="button">Browse files</button>
-            </div>
-            <div id="attachmentTray"></div>
-            </div>
-          </details>
-
-          <div class="chat-input-area">
-            <textarea id="chat-input" class="chat-input" placeholder="Paste the monitoring alert, customer request, or incident details..."></textarea>
-            <button id="send-button" type="button" class="send-button" aria-label="Send message">Send</button>
+            <textarea id="chat-input" class="chat-input" placeholder="Message or paste a screenshot..."></textarea>
+            <div class="composer-controls"><button type="button" id="attachImageBtn" class="composer-attach-button" title="Attach screenshot" aria-label="Attach screenshot">＋ <span>Image</span></button><span class="composer-hint">Paste, drag, or attach a screenshot</span><button id="send-button" type="button" class="send-button" aria-label="Send message">Send</button></div>
           </div>
       </div>
       </div>
@@ -242,12 +229,12 @@
   <div id="snackbar"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsdiff/5.1.0/diff.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="library/zoho_desk_documentation.js"></script>
   <script src="library/user-gemini.js"></script>
   <script src="library/account-history.js"></script>
   <script src="library/sandz-ticket-rules.js"></script>
   <script src="library/customer-safety.js"></script>
+  <script src="library/request-safety.js"></script>
   <script src="library/init.js"></script>
   <script src="library/zoho-ui-autofill.js"></script>
   <script src="library/navigation.js"></script>

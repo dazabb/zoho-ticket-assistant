@@ -118,8 +118,19 @@
     if (busy) throw new Error('A Gemini request is already in progress.');
     if (model !== MODEL) throw new Error('Only the configured Gemini model is enabled.');
     if (!Array.isArray(messages) || !messages.length || messages.length > 12) throw new Error('Invalid conversation history.');
-    const contents = messages.map(item => ({ role:item.role === 'model' ? 'model' : 'user', parts:[{text:String(item.text||'')}]}));
-    if (contents.some(item => !item.parts[0].text.trim())) throw new Error('Empty message.');
+    const contents = messages.map(item => {
+      const parts = [{text:String(item.text||'')}];
+      if (Array.isArray(item.images)) {
+        for (const image of item.images.slice(0, 4)) {
+          if (!image || !/^image\/(?:jpeg|png|webp)$/i.test(image.mimeType || '') || !/^[a-z0-9+/=]+$/i.test(image.data || ''))
+            throw new Error('Unsupported screenshot. Please use a PNG or JPEG image.');
+          if (image.data.length > 12_000_000) throw new Error('Screenshot is too large. Please resize it and try again.');
+          parts.push({inlineData:{mimeType:image.mimeType,data:image.data}});
+        }
+      }
+      return {role:item.role === 'model' ? 'model' : 'user',parts};
+    });
+    if (contents.some(item => !item.parts[0].text.trim() && item.parts.length === 1)) throw new Error('Empty message.');
     busy = true;
     const requestProfile = activeProfile;
     const requestKey = key;

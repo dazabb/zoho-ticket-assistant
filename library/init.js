@@ -360,7 +360,7 @@ Subject: SANDZ-SI-AMDOCS-Activity | Power Drain Activity (May 25, 2026 10PM-5AM)
   - Multiple Backup Offload Failures Due to Repository Capacity
   - Capacity Tier Offload Failure with S3-Compatible Connection Errors
 
-Always classify Ticket Category as Incident by default; use Request only for clear service/work requests.
+Classify Ticket Category from the CURRENT ticket purpose. Administrative service-account login, access, permissions, approval and other coordination requests without a reported outage or failure are Requests. Use Incident only for a reported unexpected technical failure. Do not carry over classification or platform from previous tickets.
 Explicit one-time delivery work such as migration, cabling, implementation, deployment, refresh, upgrade, cutover, relocation, and scheduled project activity is a clear Request signal, not an Incident signal.
 
 Scheduled maintenance mapping rules:
@@ -1368,26 +1368,10 @@ Severity answer structure:
   }
 
   function restoreAttachmentSummaries() {
+    // Image bytes are intentionally not saved to browser storage. Old metadata-only
+    // images cannot be sent to Gemini; discard them on reload to avoid fake attachments.
     clearRuntimeAttachments();
-    let stored = [];
-    try {
-      const parsed = JSON.parse(safeLocalStorageGet(STORAGE_KEYS.attachments, "[]"));
-      stored = Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-      stored = [];
-    }
-    state.attachments = stored.map(function (attachment, index) {
-      return {
-        id: String(attachment && attachment.id || `attachment-restored-${index + 1}`),
-        name: String(attachment && attachment.name || `image-${index + 1}`),
-        file: null,
-        previewUrl: "",
-        status: String(attachment && attachment.status || "ready"),
-        ocrText: String(attachment && attachment.ocrText || ""),
-        addedAt: Number(attachment && attachment.addedAt || 0)
-      };
-    });
-    state.attachmentCounter = state.attachments.length;
+    safeLocalStorageSet(STORAGE_KEYS.attachments, '[]');
     renderAttachmentTray();
   }
 
@@ -1971,77 +1955,41 @@ Severity answer structure:
 
   function updateAttachmentSummaryActions() {
     const count = state.attachments.length;
-    $("attachmentCount").textContent = count ? `(${count})` : "";
-    $("clearAttachmentsBtn").style.display = count ? "inline-block" : "none";
+    if ($('attachmentCount')) $('attachmentCount').textContent = count ? `(${count})` : '';
+    if ($('clearAttachmentsBtn')) $('clearAttachmentsBtn').hidden = !count;
+    if ($('composerAttachments')) $('composerAttachments').hidden = !count;
   }
 
   function renderAttachmentTray() {
-    const tray = $("attachmentTray");
+    const tray = $('attachmentTray');
     if (!tray) return;
-
     updateAttachmentSummaryActions();
-
-    if (!state.attachments.length) {
-      tray.innerHTML = "";
-      persistAttachmentSummaries();
-      return;
-    }
-
-    tray.innerHTML = "";
-    state.attachments.forEach(function (attachment) {
-      const card = document.createElement("div");
-      card.className = "attachment-card";
-
-      let thumb;
-      if (attachment.previewUrl) {
-        thumb = document.createElement("img");
-        thumb.className = "attachment-thumb";
-        thumb.src = attachment.previewUrl;
-        thumb.alt = attachment.name;
-      } else {
-        thumb = document.createElement("div");
-        thumb.className = "attachment-thumb attachment-thumb-placeholder";
-        thumb.textContent = "IMG";
-      }
-
-      const info = document.createElement("div");
-      info.className = "attachment-info";
-
-      const fileName = document.createElement("div");
-      fileName.className = "attachment-filename";
-      fileName.textContent = attachment.name;
-
-      const badge = document.createElement("span");
-      badge.className = `attachment-badge ${attachment.status}`;
-      badge.textContent = attachment.status === "processing"
-        ? "OCR running"
-        : attachment.status === "ready"
-          ? "\u2713"
-          : "OCR failed";
-
-      info.appendChild(fileName);
-      info.appendChild(badge);
-
-      const actions = document.createElement("div");
-      actions.className = "attachment-card-actions";
-
-      const removeButton = document.createElement("button");
-      removeButton.type = "button";
-      removeButton.className = "card-action-btn danger";
-      removeButton.textContent = "Remove";
-      removeButton.addEventListener("click", function () {
-        removeAttachment(attachment.id);
-      });
-
-      actions.appendChild(removeButton);
-
-      card.appendChild(thumb);
-      card.appendChild(info);
-      card.appendChild(actions);
+    tray.replaceChildren();
+    state.attachments.forEach(attachment => {
+      const card = document.createElement('div');card.className='composer-image-item';
+      const preview = document.createElement('img');preview.src = attachment.previewUrl || '';
+      preview.alt=attachment.name; preview.title=attachment.name;
+      card.appendChild(preview);
+      const remove = document.createElement('button');remove.type='button';remove.className='composer-remove-image';
+      remove.textContent='×';remove.title='Remove '+attachment.name;remove.setAttribute('aria-label','Remove '+attachment.name);
+      remove.addEventListener('click',()=>removeAttachment(attachment.id));card.appendChild(remove);
       tray.appendChild(card);
     });
-
     persistAttachmentSummaries();
+  }
+
+  function fileToGeminiImage(attachment) {
+    return new Promise((resolve,reject) => {
+      const file = attachment && attachment.file;
+      if (!file || !/^image\/(?:png|jpeg|webp)$/i.test(file.type)) {
+        reject(new Error('Please attach PNG or JPEG screenshots.'));return;
+      }
+      if (file.size > 9_000_000) {reject(new Error('Screenshot too large. Use an image smaller than 9 MB.'));return;}
+      const reader = new FileReader();
+      reader.onerror=()=>reject(new Error('Could not read screenshot.'));
+      reader.onload=()=>resolve({mimeType:file.type,data:String(reader.result||'').split(',')[1]||''});
+      reader.readAsDataURL(file);
+    });
   }
 
   function removeAttachment(id) {
@@ -2069,31 +2017,6 @@ Severity answer structure:
     showSnackbar("Cleared screenshot attachments.");
   }
 
-  async function runOcr(attachment) {
-    if (!window.Tesseract || !attachment.file) {
-      attachment.status = "error";
-      renderAttachmentTray();
-      return;
-    }
-
-    try {
-      const result = await window.Tesseract.recognize(attachment.file, "eng");
-      attachment.ocrText = String(result && result.data && result.data.text || "").trim();
-      attachment.status = "ready";
-      renderAttachmentTray();
-      if (attachment.ocrText) {
-        showSnackbar(`OCR completed for ${attachment.name}.`);
-      } else {
-        showSnackbar(`OCR completed for ${attachment.name}, but no text was found.`);
-      }
-    } catch (error) {
-      attachment.status = "error";
-      attachment.ocrText = "";
-      renderAttachmentTray();
-      showSnackbar(`OCR failed for ${attachment.name}.`);
-    }
-  }
-
   function addAttachment(file) {
     if (!file || !file.type || !file.type.startsWith("image/")) {
       return;
@@ -2104,14 +2027,15 @@ Severity answer structure:
       name: file.name || `screenshot-${state.attachmentCounter}.png`,
       file,
       previewUrl: URL.createObjectURL(file),
-      status: "processing",
+      status: "ready",
       ocrText: "",
       addedAt: Date.now()
     };
 
+    if (state.attachments.length >= 4) {URL.revokeObjectURL(attachment.previewUrl);showSnackbar('Attach up to 4 images per message.');return;}
+    if (file.size > 9_000_000) {URL.revokeObjectURL(attachment.previewUrl);showSnackbar('Please use an image smaller than 9 MB.');return;}
     state.attachments.push(attachment);
     renderAttachmentTray();
-    runOcr(attachment);
   }
 
   function handleImageFiles(fileList) {
@@ -2476,17 +2400,13 @@ Severity answer structure:
       persistChatMessages();
       persistConversation();
     }
-    // Keep only newly supplied screenshots belonging to the incoming customer.
-    // In particular, do NOT destroy the image that triggered this customer change.
-    const keep = state.attachments.filter(function (attachment) {
-      const identity = window.MAUCustomerSafety?.sourceIdentity({ocrText:attachment.ocrText || ''});
-      return attachment && attachment.status === 'ready' && identity?.key === accountKey;
-    });
-    state.attachments = state.attachments.filter(item => !keep.includes(item));
+    // Pending screenshots belong to the new message; preserve them during a customer switch.
+    // Previously sent screenshots are cleared after the successful send.
+    const pendingImages = state.attachments.slice();
+    state.attachments = [];
     clearRuntimeAttachments();
-    state.attachments = keep;
+    state.attachments = pendingImages;
     renderAttachmentTray();
-    persistAttachmentSummaries();
     const account = ACCOUNT_ALIAS_RULES.find(r => normalizeText(r.account) === accountKey);
     const historical = window.MAUAccountHistory?.records?.find(item => item.id === accountKey);
     const name = account ? account.customer : (historical ? historical.customer : (accountKey || getNextSessionName()));
@@ -2809,6 +2729,7 @@ Severity answer structure:
     const sections = [
       mode === "qa" ? ZOHO_QA_PROMPT : ZOHO_GENERATOR_PROMPT,
       "Important current SANDZ classification and support policy:\n" + sandzGuidance,
+      window.MAURequestSafety?.POLICY || '', 
       modeInstruction,
       freshAccountContext ? "Fresh account context: The latest user request is authoritative for this run. Ignore older visible ticket examples or screenshots from other accounts unless the user explicitly references them in the current message." : "",
       accountClassificationOverride,
@@ -2989,7 +2910,7 @@ Severity answer structure:
     showSnackbar("Workspace updated from the latest assistant response.");
   }
 
-  async function fetchTeamAiResponse(prompt, includeHistory = false) {
+  async function fetchTeamAiResponse(prompt, includeHistory = false, images = []) {
     if (!window.MAUUserGemini) throw new Error("Gemini API module is unavailable.");
     const model = $("my-select-dropdown").value;
     const history = (includeHistory ? state.chatConversation.slice(-8) : []).map(function (item) {
@@ -3000,7 +2921,7 @@ Severity answer structure:
     }).filter(item => item.text);
     const result = await window.MAUUserGemini.generate({
       model,
-      messages: history.concat([{role:"user", text:prompt}])
+      messages: history.concat([{role:"user", text:prompt, images}])
     });
     if (!result.text) throw new Error("Gemini returned an empty response.");
     return result.text;
@@ -3010,8 +2931,8 @@ Severity answer structure:
     if (state.isSending) return;
     const input = $("chat-input");
     const userText = String(input.value || "").trim();
-    if (!userText) {
-      showSnackbar("Enter a message before sending.");
+    if (!userText && !state.attachments.some(a => a.status === 'ready' && a.file)) {
+      showSnackbar("Enter a message or attach a screenshot.");
       return;
     }
     if (!ensureApiKeyForAiAction()) {
@@ -3050,7 +2971,7 @@ Severity answer structure:
     }
     const sendingProfile = state.activeProfileId;
     const sendingSession = state.activeSessionId;
-    addMessage(userText, "user");
+    addMessage(userText || `📷 ${state.attachments.length} screenshot${state.attachments.length === 1 ? '' : 's'}`, "user");
     input.value = "";
     setLoading(true);
 
@@ -3064,7 +2985,7 @@ Severity answer structure:
       const scopedContext = buildScopedPromptContext(focusedUserText, currentAccountKey);
       if (safety) scopedContext.ocrText = safety.focusTicket(scopedContext.ocrText);
       const combinedInput = [scopedContext.workspace, scopedContext.ocrText, scopedContext.userText].filter(Boolean).join("\n\n");
-      if (!hasUsableIncidentDetails(combinedInput) && mode !== "qa") {
+      if (!hasUsableIncidentDetails(combinedInput) && !state.attachments.some(a => a.status === 'ready' && a.file) && mode !== "qa") {
         addMessage(EMPTY_INCIDENT_PROMPT, "ai");
         return;
       }
@@ -3074,7 +2995,9 @@ Severity answer structure:
       if (lockedCustomer) {
         prompt += `\n\nCURRENT TICKET — VERIFIED CUSTOMER: ${lockedCustomer.company}\nExact Zoho Account Name: ${lockedCustomer.account || 'Needs verification in Zoho Desk'}\nSubject customer label: ${lockedCustomer.subject}. Never replace this customer with a company merely mentioned in a ticket list, previous conversation, or forwarded email. Preserve the actual current alert platform (Zerto is not RackWare). If the supplied current ticket conflicts, flag it instead of guessing.`;
       }
-      const reply = await fetchTeamAiResponse(prompt, mode === 'qa' || mode === 'bridge');
+      const imageParts = await Promise.all(state.attachments.filter(a => a.status === 'ready' && a.file).slice(0,4).map(fileToGeminiImage));
+      if (imageParts.length) prompt += "\n\nIMPORTANT: The user provided actual screenshots as image parts. Read the images directly. Extract only visible facts and exact errors. Do not ask the user to paste text already visible in the screenshots. Treat user-provided company name as intended customer, but flag if the screenshot clearly belongs to another company. Do not invent unreadable fields or claim actions were performed.";
+      const reply = await fetchTeamAiResponse(prompt, mode === 'qa' || mode === 'bridge', imageParts);
       // Prevent delayed responses from being inserted into another profile or chat.
       if (state.activeProfileId !== sendingProfile || state.activeSessionId !== sendingSession) return;
       let normalizedReply = normalizeAssistantOutput(reply, mode);
@@ -3089,6 +3012,11 @@ Severity answer structure:
         normalizedReply=verified.text;
         classificationCorrections.push(...verified.changes.map(field=>'Verified '+field));
       }
+      if (mode === 'standard' && window.MAURequestSafety) {
+        const validated = window.MAURequestSafety.fixTicketText(normalizedReply, combinedInput);
+        normalizedReply = validated.text;
+        classificationCorrections.push(...validated.changes.map(field=>'Validated '+field));
+      }
       // Never let a reply intended for one customer contain another customer's
       // ticket subject. Stop it before chat display, copying, or autofill.
       if (mode === 'standard' && lockedCustomer) {
@@ -3102,6 +3030,7 @@ Severity answer structure:
         role: "user",
         parts: [{ text: prompt }]
       });
+      if (imageParts.length) clearAttachments();
       state.chatConversation.push({
         role: "model",
         parts: [{ text: normalizedReply }]
@@ -3379,22 +3308,11 @@ Severity answer structure:
         }
       });
 
-      const dropZone = $("imageDropZone");
-      dropZone.addEventListener("click", function (event) {
-        if (event.target.id !== "attachImageBtn") {
-          $("imageAttachmentInput").click();
-        }
-      });
-      dropZone.addEventListener("dragover", function (event) {
-        event.preventDefault();
-        dropZone.classList.add("drag-over");
-      });
-      dropZone.addEventListener("dragleave", function () {
-        dropZone.classList.remove("drag-over");
-      });
-      dropZone.addEventListener("drop", function (event) {
-        event.preventDefault();
-        dropZone.classList.remove("drag-over");
+      const composer = $('chatComposer');
+      composer.addEventListener('dragover', event => {event.preventDefault(); composer.classList.add('drag-over');});
+      composer.addEventListener('dragleave', () => composer.classList.remove('drag-over'));
+      composer.addEventListener('drop', event => {
+        event.preventDefault();composer.classList.remove('drag-over');
         handleImageFiles(event.dataTransfer && event.dataTransfer.files);
       });
 
@@ -3404,7 +3322,8 @@ Severity answer structure:
           .filter(function (item) { return item.type && item.type.startsWith("image/"); })
           .map(function (item) { return item.getAsFile(); })
           .filter(Boolean);
-        if (files.length) {
+        if (files.length && (event.target === $('chat-input') || $('chatComposer')?.contains(event.target))) {
+          event.preventDefault();
           handleImageFiles(files);
         }
       });

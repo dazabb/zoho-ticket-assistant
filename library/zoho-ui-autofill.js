@@ -964,8 +964,9 @@
       }
     };
     if (window.MAUSandzTicketRules) {
-      return window.MAUSandzTicketRules.correctZohoPayload(result, workspaceText);
+      window.MAUSandzTicketRules.correctZohoPayload(result, workspaceText);
     }
+    if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(result, workspaceText);
     return result;
   }
 
@@ -1049,6 +1050,8 @@
     if (currentLock?.key && window.MAUCustomerSafety) {
       window.MAUCustomerSafety.enforcePayload(payload,currentLock.key,workspaceText);
     }
+    // Final request/incident check happens AFTER account and platform mapping.
+    if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(payload,workspaceText);
     copyFallbackPayload(payload);
     const targetUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_ZOHO_NEW_TICKET_URL;
     const fallbackUrl = buildHashFallbackUrl(payload, targetUrl);
