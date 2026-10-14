@@ -30,7 +30,7 @@
     status.hidden=view!=='tickets';
     syncViewButtons(view);
     document.getElementById('toolbarTitle').textContent=({tickets:'Ticket Workspace',monde:'Monde Nissin Report',followup:'Viber Follow-up'})[view];
-    document.getElementById('toolbarSubtitle').textContent=({tickets:'Notes and ticket preparation',monde:'Daily Zerto monitoring report',followup:'Zoho ticket status updates from CSV'})[view];
+    document.getElementById('toolbarSubtitle').textContent=({tickets:'Chat',monde:'Daily Zerto monitoring report',followup:'Zoho ticket status updates from CSV'})[view];
     if(view==='tickets'&&window.editor&&typeof window.editor.resize==='function')requestAnimationFrame(()=>window.editor.resize());
     const newHash=({tickets:'#tickets',monde:'#reporting/monde',followup:'#reporting/viber-followup'})[view];
     if(window.location.hash!==newHash)history.replaceState(null,'',newHash);

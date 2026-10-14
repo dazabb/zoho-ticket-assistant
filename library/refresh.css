@@ -361,3 +361,29 @@ body.theme-dark #followupPane,body.theme-dark #followupFrame{background:#1b1d22}
 /* v1.6: remove empty secondary headings and keep core actions prominent */
 .toolbar-subtitle:empty,.toolbar-brand .toolbar-divider:has(+ .toolbar-subtitle:empty){display:none!important}
 .output-help[hidden]{display:none!important}
+
+
+/* v1.7 — one large, readable, chat-only workspace. The hidden editor is kept only for Zoho autofill compatibility. */
+#mainArea{gap:0;padding:0 16px 18px;align-items:stretch;}
+#workspacePane{position:absolute!important;left:-9999px!important;top:-9999px!important;width:2px!important;height:2px!important;min-height:0!important;min-width:0!important;max-width:2px!important;overflow:hidden!important;visibility:hidden!important;pointer-events:none!important;}
+#chatBotContainer{flex:1 1 auto!important;min-height:0!important;width:100%!important;max-width:1360px!important;margin:0 auto;}
+.chat-section{min-height:0;height:100%;}
+.chat-messages{padding:28px max(24px,calc((100% - 1060px)/2)) 16px!important;overflow-y:auto;overscroll-behavior:contain;}
+.message-bubble{font-size:15px;line-height:1.7;}
+.message.ai .message-bubble{max-width:100%;}
+.message.user .message-bubble{max-width:min(88%,960px);}
+.output-selector{padding-left:max(24px,calc((100% - 1060px)/2));padding-right:max(24px,calc((100% - 1060px)/2));}
+.chat-input-area,.attachments-disclosure{width:min(1080px,calc(100% - 48px));}
+.chat-input{font-size:15px;min-height:54px;max-height:200px;}
+.model-container{padding:14px 22px;gap:12px;}
+.model-tool-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+#chatNewChatBtn,#chatCreateTicketBtn{font-weight:650;}
+#chatCreateTicketBtn{background:var(--mau-blue);color:#fff;border-color:var(--mau-blue);}
+#chatCreateTicketBtn:hover{background:var(--mau-blue-hover);}
+.chat-customer-notice{margin:10px auto 0;padding:10px 15px;border:1px solid var(--mau-border);background:var(--mau-secondary);border-radius:12px;color:var(--mau-secondary-text);width:min(1080px,calc(100% - 48px));}
+.remember-api-key-option{display:flex;align-items:center;gap:9px;margin:6px 0 0;color:var(--mau-text);font-size:13px;cursor:pointer;}
+.remember-api-key-option input{width:16px;height:16px;accent-color:var(--mau-blue);}
+@media(max-width:850px){#mainArea{padding:0 12px 12px}.chat-messages{padding:20px 18px!important}.output-selector{padding-left:14px;padding-right:14px}.model-container{flex-wrap:wrap;}}
+@media(max-width:680px){#mainArea{padding:0 8px 8px}.chat-input-area,.attachments-disclosure{width:calc(100% - 20px)}.model-container{padding:10px 12px}.model-tool-actions{gap:5px}.chat-input{font-size:14px}.chat-messages{padding:14px 12px!important}}
+
+.remember-key-warning{font-size:12px;line-height:1.5;color:var(--mau-secondary-text);margin:4px 0 12px;}

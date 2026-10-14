@@ -1,8 +1,9 @@
-/* MAU: individual Gemini API keys, held in memory only. No shared backend is used. */
+/* MAU: personally owned Gemini keys; optional device storage scoped to the selected MAU profile. */
 (function () {
   'use strict';
   const MODEL = 'gemini-3.5-flash-lite';
   const USAGE_PREFIX = 'mauGeminiUsageV08::';
+  const SAVED_KEY_PREFIX = 'mauPersonalGeminiV17::';
   const PROVIDER_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
   const GUIDANCE = 'You help MAU technical support engineers prepare Zoho Desk tickets, concise technical summaries, and troubleshooting notes. Prefer factual, natural, professional operational writing. Never invent actions, access to systems, ticket numbers, customer details, or incident resolutions. Explain uncertainty. Always distinguish notes supplied by the user from facts that require verification.';
   const pacificFormatter = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -30,11 +31,11 @@
     return hi;
   }
 
-  function storeKey() { return USAGE_PREFIX + (activeProfile || 'guest'); }
+  function storeKey(profileId = activeProfile) { return USAGE_PREFIX + (profileId || 'guest'); }
   function emptyUsage() { return { day: pacificDate(), requests: 0, failed: 0, totalTokens: 0, inputTokens: 0, outputTokens: 0 }; }
-  function getUsage() {
+  function getUsage(profileId = activeProfile) {
     try {
-      const raw = localStorage.getItem(storeKey());
+      const raw = localStorage.getItem(storeKey(profileId));
       const data = JSON.parse(raw || 'null');
       if (data && data.day === pacificDate()) return {
         day:data.day,
@@ -47,11 +48,11 @@
     } catch (e) { /* Storage is optional. */ }
     return emptyUsage();
   }
-  function writeUsage(data) {
-    try { localStorage.setItem(storeKey(), JSON.stringify(data)); } catch (e) { /* Storage is optional. */ }
+  function writeUsage(data, profileId = activeProfile) {
+    try { localStorage.setItem(storeKey(profileId), JSON.stringify(data)); } catch (e) { /* Storage is optional. */ }
   }
-  function tally(success, metadata = {}) {
-    const data = getUsage();
+  function tally(success, metadata = {}, profileId = activeProfile) {
+    const data = getUsage(profileId);
     if (success) {
       data.requests++;
       data.inputTokens += Math.max(0, Number(metadata.promptTokenCount) || 0);
@@ -60,7 +61,7 @@
     } else {
       data.failed++;
     }
-    writeUsage(data); refreshUi();
+    writeUsage(data, profileId); refreshUi();
   }
   function timeUntilReset() {
     const ms = Math.max(0, nextResetTimestamp() - Date.now());
@@ -71,7 +72,7 @@
     const status = $('userKeyStatus');
     if (status) {
       status.className = `api-key-feedback ${key ? 'ok' : 'warn'}`;
-      status.textContent = key ? 'Key ready in this tab (not yet verified with Google).' : 'No key entered for this profile.';
+      status.textContent = key ? (savedForProfile() ? 'Saved for this profile. No need to enter it again.' : 'Key active for this session.') : 'No key saved for this profile.';
     }
     const toolbar = $('toolbarApiStatus'); if (toolbar) toolbar.textContent = key ? 'Ready' : 'Not set';
     const ai = $('openTeamAiBtn'); if (ai) {ai.classList.toggle('connected',!!key); ai.classList.toggle('disconnected',!key);}
@@ -85,13 +86,30 @@
       $('usageResetTimestamp').textContent = new Date(nextResetTimestamp()).toLocaleString(undefined, {dateStyle:'medium',timeStyle:'short'}) + ' (local time) · midnight Pacific';
     }
   }
-  function clearKey() {
+  function savedKeyName(profileId = activeProfile) {
+    return SAVED_KEY_PREFIX + String(profileId || 'guest');
+  }
+  function savedForProfile() {
+    if (!activeProfile || activeProfile === 'guest') return false;
+    try { return Boolean(localStorage.getItem(savedKeyName())); } catch (_) { return false; }
+  }
+  function clearKey(removeSaved = false) {
+    if (removeSaved && activeProfile && activeProfile !== 'guest') {
+      try { localStorage.removeItem(savedKeyName()); } catch (_) {}
+    }
     key = '';
     const input = $('userGeminiApiKey'); if(input) input.value = '';
     refreshUi();
   }
   function setProfile(profileId) {
-    clearKey(); activeProfile = profileId || 'guest'; refreshUi();
+    key = '';
+    activeProfile = profileId || 'guest';
+    if (activeProfile !== 'guest') {
+      try { key = String(localStorage.getItem(savedKeyName()) || ''); } catch (_) { key = ''; }
+    }
+    // Each named profile remembers its key on this browser until explicitly removed.
+    if ($('userGeminiApiKey')) $('userGeminiApiKey').value = '';
+    refreshUi();
   }
   function hasKey() { return Boolean(key); }
 
@@ -103,12 +121,14 @@
     const contents = messages.map(item => ({ role:item.role === 'model' ? 'model' : 'user', parts:[{text:String(item.text||'')}]}));
     if (contents.some(item => !item.parts[0].text.trim())) throw new Error('Empty message.');
     busy = true;
+    const requestProfile = activeProfile;
+    const requestKey = key;
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 60000);
     try {
       const response = await fetch(PROVIDER_URL, {
         method:'POST',
-        headers:{'Content-Type':'application/json','x-goog-api-key':key},
+        headers:{'Content-Type':'application/json','x-goog-api-key':requestKey},
         body:JSON.stringify({
           systemInstruction:{parts:[{text:GUIDANCE}]},
           contents,
@@ -129,10 +149,10 @@
       }
       const text = (data.candidates||[]).flatMap(c => c.content?.parts || []).map(p => p.text || '').filter(Boolean).join('\n').trim();
       if (!text) throw new Error('Google returned no text. Please revise the request.');
-      tally(true, data.usageMetadata || {});
+      tally(true, data.usageMetadata || {}, requestProfile);
       return {text, usage:data.usageMetadata || {}};
     } catch (e) {
-      tally(false);
+      tally(false, {}, requestProfile);
       if (e.name === 'AbortError') throw new Error('The Gemini request timed out. Please try again.');
       if (e instanceof TypeError) throw new Error('Could not reach Google Gemini from this browser. Check your internet, site permissions, and browser network policy.');
       throw e;
@@ -149,10 +169,16 @@
         return;
       }
       key = entered;
+      if (activeProfile && activeProfile !== 'guest') {
+        try { localStorage.setItem(savedKeyName(), entered); }
+        catch (e) {
+          if ($('userKeyStatus')) $('userKeyStatus').textContent = 'Key is active but could not be saved on this device.';
+        }
+      }
       if ($('userGeminiApiKey')) $('userGeminiApiKey').value='';
       refreshUi();
     });
-    $('removeUserGeminiKey')?.addEventListener('click', clearKey);
+    $('removeUserGeminiKey')?.addEventListener('click', () => clearKey(true));
     $('toolbarApiKeyBtn')?.addEventListener('click', () => window.openApiModal && window.openApiModal());
     $('chatApiKeyBtn')?.addEventListener('click', () => window.openApiModal && window.openApiModal());
     $('resetLocalUsageBtn')?.addEventListener('click', ()=>{

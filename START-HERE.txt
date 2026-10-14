@@ -7,11 +7,11 @@ MAU OPERATION DESK v0.9 — PERSONAL GEMINI API KEYS
    Alternatively open index.html directly; some browsers may restrict local file API requests.
 3. Select your pictured profile.
 4. Click API key, then Get Gemini API key ↗ to open Google AI Studio (https://aistudio.google.com/apikey). Create or copy your personal key, return to MAU, and paste it into the field.
-5. Click Use this key, close the dialog, and use the AI chat.
+5. Click Save key and use the AI chat.
 6. Click API key / Usage to see requests made through this browser, tokens reported by Google, and next reset.
 
 No shared API key, MAU server AI connection, or .env file is needed.
-Your personal Gemini key stays in the active tab's JavaScript memory only, never localStorage or the ZIP. It is cleared on refresh, tab close or profile switching. The key is necessarily sent by the browser to Google's Gemini API and can be seen in your own browser's developer tools or potentially browser extensions. Do not use on a shared/untrusted device.
+If Remember my key is checked, the key is stored in this browser (unencrypted localStorage) for the selected picture profile and loaded next time on the same browser. Anyone with access to that browser can read/use it. Do not save keys on a shared/untrusted device. MAU picture profiles are not authentication; use a separate browser/OS account for privacy.
 
 USAGE: App counters are local only; Google rate limits apply by Google Cloud project, including activity outside MAU. Daily request quotas reset at midnight Pacific Time. Confirm actual usage/limits at https://aistudio.google.com/usage.
 

@@ -90,7 +90,7 @@
       <button type="button" class="side-user-card" id="sidebarSwitchProfileBtn" title="Switch profile"><div class="side-user-avatar" id="sidebarProfileAvatar">M</div><div><strong id="sidebarProfileName">Select profile</strong><small>Switch profile</small></div></button>
     </aside>
     <div id="toolbar">
-      <div class="toolbar-brand"><div class="toolbar-title" id="toolbarTitle">Ticket Workspace</div><span class="toolbar-divider">/</span><span class="toolbar-subtitle" id="toolbarSubtitle"></span></div>
+      <div class="toolbar-brand"><div class="toolbar-title" id="toolbarTitle">Ticket Workspace</div><span class="toolbar-divider">/</span><span class="toolbar-subtitle" id="toolbarSubtitle">Chat</span></div>
       <div class="toolbar-center-switch" role="tablist" aria-label="View switcher">
         <button type="button" class="toolbar-view-pill active" id="topSwitchTickets" aria-selected="true">Workspace</button>
         <button type="button" class="toolbar-view-pill" id="topSwitchMonde" aria-selected="false">Monde Report</button>
@@ -104,7 +104,7 @@
         <details class="toolbar-more"><summary>Workspace tools <span aria-hidden="true">⌄</span></summary>
           <div class="toolbar-menu">
             <label class="menu-label">Saved ticket sessions</label><div class="session-controls"><select id="chatSessionSelect" aria-label="Saved chat sessions"></select><button class="toolbar-btn" id="newChatSessionBtn">New</button><button class="toolbar-btn" id="renameChatSessionBtn">Rename</button><button class="toolbar-btn" id="deleteChatSessionBtn">Delete</button></div>
-            <div class="toolbar-menu-grid"><button class="toolbar-btn" onclick="toggleTheme()">Theme</button><button class="toolbar-btn" onclick="openDocumentationModal()">Docs</button><button class="toolbar-btn api-btn" onclick="openApiModal()">API key & usage</button><button class="toolbar-btn assistant-btn" onclick="toggleDisplayChatBotContainer()">Assistant</button><button type="button" class="toolbar-btn" id="openAccountReferenceBtn">Account reference</button></div>
+            <div class="toolbar-menu-grid"><button class="toolbar-btn" onclick="toggleTheme()">Theme</button><button class="toolbar-btn" onclick="openDocumentationModal()">Docs</button><button class="toolbar-btn api-btn" onclick="openApiModal()">API key & usage</button><button class="toolbar-btn assistant-btn" onclick="toggleDisplayChatBotContainer()">Open chat</button><button type="button" class="toolbar-btn" id="openAccountReferenceBtn">Account reference</button></div>
           </div>
         </details>
       </div>
@@ -119,8 +119,7 @@
             <div class="workspace-subtitle"></div>
           </div>
           <div class="workspace-actions">
-            <button type="button" id="toggleNotesBtn" aria-expanded="true">Hide notes</button>
-            <button id="createZohoTicketBtn" title="Open Zoho Desk and auto-fill the new ticket form from the workspace">Create Ticket</button>
+            <button id="createZohoTicketBtn" title="Open Zoho Desk using the latest generated ticket fields">Create Ticket</button>
           </div>
         </div>
         <div id="editor"></div>
@@ -149,7 +148,7 @@
               <span class="gemini-model-name">Gemini</span>
               
             </div>
-            <div class="model-tool-actions"><span id="usageCounterInline" class="usage-counter-inline" title="Requests completed in this browser today">0 today</span><button type="button" class="model-api-link" id="chatApiKeyBtn">API key</button><button id="clear-chat-btn" title="Clear chat messages">Clear chat</button></div>
+            <div class="model-tool-actions"><span id="usageCounterInline" class="usage-counter-inline" title="Requests today">0 today</span><button type="button" id="chatNewChatBtn" class="model-api-link">＋ New chat</button><button type="button" id="chatCreateTicketBtn" class="model-api-link" title="Use the latest Zoho fields">Create Ticket</button><button type="button" class="model-api-link" id="chatApiKeyBtn">API key</button><button id="clear-chat-btn" title="Clear this chat">Clear</button></div>
           </div>
           <div class="output-selector" role="group" aria-label="Choose assistant output">
             
@@ -158,6 +157,7 @@
             <button type="button" class="output-option" data-output-mode="qa" aria-pressed="false">Troubleshooting</button>
           </div>
           <div class="output-help" id="outputModeHelp" hidden></div>
+          <div id="chatCustomerNotice" class="chat-customer-notice" role="status" hidden></div>
           <div class="chat-messages" id="chat-messages"></div>
           <div class="loading-indicator" id="loading-indicator">
             Thinking <span class="first_dot">.</span><span class="second_dot">.</span><span class="third_dot">.</span>
@@ -210,10 +210,11 @@
           </div>
           <div class="user-api-input-row"><input id="userGeminiApiKey" name="gemini-key" type="password" placeholder="Paste your Gemini API key" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="apiKeyPrivacy geminiKeyInstructions"><button type="button" id="toggleApiKeyVisibility" title="Show or hide key">Show</button></div>
           <p class="gemini-key-instructions" id="geminiKeyInstructions" hidden></p>
-          <div class="user-api-actions"><button type="submit" id="saveUserGeminiKey">Use this key</button><button type="button" id="removeUserGeminiKey">Remove key</button></div>
+          <p class="remember-key-warning">Saved for this profile on this browser. Use Remove key if this is a shared device.</p>
+          <div class="user-api-actions"><button type="submit" id="saveUserGeminiKey">Save key</button><button type="button" id="removeUserGeminiKey">Remove key</button></div>
         </form>
         <p class="api-key-feedback" id="userKeyStatus" role="status">No key entered for this profile.</p>
-        <details class="api-security"><summary>API key privacy</summary><p class="ai-fineprint" id="apiKeyPrivacy">Your key is used only in this browser tab and is cleared when you switch profiles or reload. Browser extensions and developer tools can access it. Do not include sensitive customer information.</p></details>
+        <details class="api-security"><summary>Key privacy</summary><p class="ai-fineprint" id="apiKeyPrivacy">Saved keys are stored in this browser for the selected MAU profile. They are not encrypted and can be accessed by someone using this browser profile, extensions, or developer tools. Do not save keys on a shared computer. Removing the key deletes its saved copy for this profile.</p></details>
         <div class="usage-panel">
           <div class="usage-panel-head"><h3>Usage in MAU</h3><span class="usage-local-pill">This browser only</span></div>
           <div class="usage-stats"><div><span>Successful requests today</span><strong id="usageRequestCount">0</strong></div><div><span>Tokens reported today</span><strong id="usageTokenCount">0</strong></div><div><span>Failed requests today</span><strong id="usageFailureCount">0</strong></div></div>
@@ -246,6 +247,7 @@
   <script src="library/user-gemini.js"></script>
   <script src="library/account-history.js"></script>
   <script src="library/sandz-ticket-rules.js"></script>
+  <script src="library/customer-safety.js"></script>
   <script src="library/init.js"></script>
   <script src="library/zoho-ui-autofill.js"></script>
   <script src="library/navigation.js"></script>

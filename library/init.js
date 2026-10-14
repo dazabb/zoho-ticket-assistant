@@ -1213,7 +1213,18 @@ Severity answer structure:
       $("chat-messages").scrollTop = $("chat-messages").scrollHeight;
     }
     state.suppressSessionPersistence = false;
+    showActiveCustomerLabel(session.lastPromptedAccount || '');
     updateSessionControls();
+  }
+
+  function showActiveCustomerLabel(accountKey) {
+    const notice = $("chatCustomerNotice");
+    if (!notice) return;
+    const normalized = normalizeText(accountKey || '');
+    const rule = ACCOUNT_ALIAS_RULES.find(item => normalizeText(item.account) === normalized);
+    notice.hidden = !normalized;
+    const historical = window.MAUAccountHistory?.records?.find(item => item.id === accountKey);
+    notice.textContent = normalized ? `Current customer: ${rule ? rule.customer : (historical ? historical.customer : accountKey)}` : '';
   }
 
   function initializeChatSessions() {
@@ -1431,7 +1442,7 @@ Severity answer structure:
     initializeChatSessions();
     restoreAttachmentSummaries();
     applyTheme(getStoredTheme());
-    setChatVisibility(getStoredBoolean(STORAGE_KEYS.chatVisible, true));
+    setChatVisibility(true);
     refreshSettingsUi();
     saveCurrentCodeToHistory(true);
     updateProfileStatusUi();
@@ -1605,7 +1616,8 @@ Severity answer structure:
   }
 
   function toggleDisplayChatBotContainer() {
-    setChatVisibility(!state.chatVisible);
+    setChatVisibility(true);
+    $("chat-input")?.focus();
   }
 
   function toggleTheme() {
@@ -2403,6 +2415,92 @@ Severity answer structure:
     return resolveNormalizedAccountKey(workspaceText);
   }
 
+  function findIncomingCustomer(userText) {
+    const raw = String(userText || '');
+    const normalized = ` ${normalizeText(raw)} `;
+    const explicit = raw.match(/^\s*(?:Customer Company Name|Account Name|Customer|Company)\s*:\s*(.+)$/im);
+    const leading = raw.match(/(?:^|[.!?\n]\s*|\b)(?:now|switch to|new ticket for|next customer|for customer)\s+([^\n.!?,:;]+)/i);
+    const candidates = [explicit?.[1], leading?.[1], raw].filter(Boolean);
+    function scan(value) {
+      const haystack = ` ${normalizeText(value)} `;
+      const found = new Map();
+      ACCOUNT_ALIAS_RULES.forEach(rule => {
+        for (const alias of rule.aliases) {
+          const word = normalizeText(alias);
+          if (!word || word.length < 3) continue;
+          if (haystack.includes(` ${word} `)) {
+            found.set(normalizeText(rule.account), rule);
+            break;
+          }
+        }
+      });
+      // Preserve only one matching parent when a longer label contains its shorter alias.
+      const keys = [...found.keys()];
+      if (keys.includes('bpitc')) found.delete('bpi');
+      if (!found.size && window.MAUAccountHistory?.records) {
+        const historyMatches = window.MAUAccountHistory.records
+          .flatMap(record => record.aliases.map(alias => ({
+            record, alias:normalizeText(alias)
+          })))
+          .filter(item => item.alias.length >= 3 && haystack.includes(` ${item.alias} `))
+          .sort((a,b) => b.alias.length - a.alias.length);
+        if (historyMatches.length) {
+          const bestLength = historyMatches[0].alias.length;
+          historyMatches.filter(item => item.alias.length === bestLength).forEach(item => {
+            found.set(item.record.id, item.record);
+          });
+        }
+      }
+      return [...found.keys()];
+    }
+    for (let index = 0; index < candidates.length; index++) {
+      if (index < 2) {
+        const lead = ` ${normalizeText(candidates[index])} `;
+        const choices = ACCOUNT_ALIAS_RULES.flatMap(rule => rule.aliases
+          .map(alias => ({key:normalizeText(rule.account),alias:normalizeText(alias)}))
+          .filter(item => item.alias.length>=3 && lead.startsWith(` ${item.alias} `)))
+          .sort((a,b) => b.alias.length - a.alias.length);
+        if (choices.length) return {key:choices[0].key, ambiguous:false};
+      }
+      const matches = scan(candidates[index]);
+      if (index < 2 && matches.length === 1) return {key:matches[0], ambiguous:false};
+      if (index === candidates.length - 1) return {key:matches.length===1?matches[0]:'', ambiguous:matches.length>1};
+    }
+    return {key:'',ambiguous:false};
+  }
+
+  function startCleanCustomerChat(accountKey, notification = true) {
+    // Keep the old chat as a separate named session, never send it to the new customer's AI request.
+    const current = getActiveSession();
+    if (current) {
+      persistChatMessages();
+      persistConversation();
+    }
+    // Keep only newly supplied screenshots belonging to the incoming customer.
+    // In particular, do NOT destroy the image that triggered this customer change.
+    const keep = state.attachments.filter(function (attachment) {
+      const identity = window.MAUCustomerSafety?.sourceIdentity({ocrText:attachment.ocrText || ''});
+      return attachment && attachment.status === 'ready' && identity?.key === accountKey;
+    });
+    state.attachments = state.attachments.filter(item => !keep.includes(item));
+    clearRuntimeAttachments();
+    state.attachments = keep;
+    renderAttachmentTray();
+    persistAttachmentSummaries();
+    const account = ACCOUNT_ALIAS_RULES.find(r => normalizeText(r.account) === accountKey);
+    const historical = window.MAUAccountHistory?.records?.find(item => item.id === accountKey);
+    const name = account ? account.customer : (historical ? historical.customer : (accountKey || getNextSessionName()));
+    const session = createSessionRecord(name, DEFAULT_WORKSPACE, '', []);
+    session.lastPromptedAccount = accountKey || '';
+    state.chatSessions.push(session);
+    state.activeSessionId = session.id;
+    saveSessionStore();
+    applySessionToUi(session);
+    state.pendingFreshAccountContext = true;
+    if (notification) showSnackbar(`New ${name} chat. Previous customer's messages were not included.`);
+    return session;
+  }
+
   function maybeResetAiContextForAccountChange(currentAccountKey, mode) {
     if (mode === "bridge" || !currentAccountKey) return;
     const session = getActiveSession();
@@ -2411,12 +2509,7 @@ Severity answer structure:
     const previousAccountKey = normalizeText(session.lastPromptedAccount || "");
     if (!previousAccountKey || previousAccountKey === currentAccountKey) return;
 
-    state.chatConversation = [];
-    state.pendingFreshAccountContext = true;
-    session.lastContextResetAt = String(Date.now());
-    persistConversation();
-    markActiveSessionUpdated();
-    showSnackbar("Detected a new account. AI context reset for a fresh ticket run.");
+    startCleanCustomerChat(currentAccountKey);
   }
 
   function splitWorkspaceIntoTicketBlocks(workspaceText) {
@@ -2442,7 +2535,8 @@ Severity answer structure:
     const blocks = splitWorkspaceIntoTicketBlocks(workspace);
     if (!blocks.length) {
       if (!currentAccountKey) return workspace;
-      const workspaceKey = resolveNormalizedAccountKey(workspace);
+      const verified = window.MAUCustomerSafety?.sourceIdentity({userText:workspace});
+      const workspaceKey = verified?.key || resolveNormalizedAccountKey(workspace);
       return !workspaceKey || workspaceKey === currentAccountKey ? workspace : "";
     }
 
@@ -2451,7 +2545,8 @@ Severity answer structure:
     }
 
     const matchingBlocks = blocks.filter(function (block) {
-      return resolveNormalizedAccountKey(block) === currentAccountKey;
+      const verified=window.MAUCustomerSafety?.sourceIdentity({userText:block});
+      return (verified?.key || resolveNormalizedAccountKey(block)) === currentAccountKey;
     });
     return matchingBlocks.length ? matchingBlocks[matchingBlocks.length - 1] : "";
   }
@@ -2466,6 +2561,9 @@ Severity answer structure:
       .filter(function (attachment) {
         const ocrText = String(attachment.ocrText || "").trim();
         if (!currentAccountKey) return !accountJustChanged;
+        const verified=window.MAUCustomerSafety?.sourceIdentity({ocrText});
+        if (verified?.ambiguous) return false;
+        if (verified?.key) return verified.key === currentAccountKey;
         if (resolveNormalizedAccountKey(ocrText) === currentAccountKey) return true;
         if (!resetAt) return !accountJustChanged;
         return Number(attachment.addedAt || 0) >= resetAt;
@@ -2891,10 +2989,10 @@ Severity answer structure:
     showSnackbar("Workspace updated from the latest assistant response.");
   }
 
-  async function fetchTeamAiResponse(prompt) {
+  async function fetchTeamAiResponse(prompt, includeHistory = false) {
     if (!window.MAUUserGemini) throw new Error("Gemini API module is unavailable.");
     const model = $("my-select-dropdown").value;
-    const history = state.chatConversation.slice(-8).map(function (item) {
+    const history = (includeHistory ? state.chatConversation.slice(-8) : []).map(function (item) {
       return {
         role: item.role === "model" ? "model" : "user",
         text: Array.isArray(item.parts) ? item.parts.map(p => p.text || "").join("\n") : ""
@@ -2920,6 +3018,38 @@ Severity answer structure:
       return;
     }
 
+    const latestAttachment = [...state.attachments].reverse().find(a => a && a.status === 'ready' && a.ocrText);
+    const latestOcr = String(latestAttachment?.ocrText || '');
+    const safety = window.MAUCustomerSafety;
+    const identified = safety?.sourceIdentity({userText,ocrText:latestOcr}) || {key:'',ambiguous:false};
+    if (identified.ambiguous) {
+      showSnackbar('This request shows different customers. Please specify which ticket belongs to the customer you want.');
+      return;
+    }
+    const basicIncoming = findIncomingCustomer(userText);
+    const attachmentIncoming = findIncomingCustomer(latestOcr);
+    const incoming = identified.key
+      ? {key:identified.key,ambiguous:false}
+      : (basicIncoming.key || basicIncoming.ambiguous ? basicIncoming : attachmentIncoming);
+    if (incoming.ambiguous) {
+      showSnackbar('More than one customer found. Name the correct customer at the start of your message.');
+      return;
+    }
+    const previousSession = getActiveSession();
+    const previousAccount = normalizeText(previousSession?.lastPromptedAccount || '');
+    if (incoming.key && previousAccount && incoming.key !== previousAccount) {
+      startCleanCustomerChat(incoming.key);
+    }
+    if (incoming.key) {
+      const session = getActiveSession();
+      if (session && !session.lastPromptedAccount) {
+        session.lastPromptedAccount = incoming.key;
+        markActiveSessionUpdated();
+        showActiveCustomerLabel(incoming.key);
+      }
+    }
+    const sendingProfile = state.activeProfileId;
+    const sendingSession = state.activeSessionId;
     addMessage(userText, "user");
     input.value = "";
     setLoading(true);
@@ -2929,23 +3059,44 @@ Severity answer structure:
       const ocrText = getLatestReadyOcrText() || getCombinedOcrText().trim();
       const mode = state.outputMode === "email" ? "email" :
         state.outputMode === "qa" ? "qa" : detectInteractionMode(userText, workspaceText, ocrText);
-      const currentAccountKey = resolveAccountKeyFromContext(workspaceText, ocrText, userText);
-      maybeResetAiContextForAccountChange(currentAccountKey, mode);
-      const scopedContext = buildScopedPromptContext(userText, currentAccountKey);
+      const currentAccountKey = incoming.key || resolveAccountKeyFromContext(workspaceText, ocrText, userText) || previousAccount;
+      const focusedUserText = safety && userText.includes('Ticket Properties') ? safety.focusTicket(userText) : userText;
+      const scopedContext = buildScopedPromptContext(focusedUserText, currentAccountKey);
+      if (safety) scopedContext.ocrText = safety.focusTicket(scopedContext.ocrText);
       const combinedInput = [scopedContext.workspace, scopedContext.ocrText, scopedContext.userText].filter(Boolean).join("\n\n");
       if (!hasUsableIncidentDetails(combinedInput) && mode !== "qa") {
         addMessage(EMPTY_INCIDENT_PROMPT, "ai");
         return;
       }
 
-      const prompt = buildPrompt(userText, mode, scopedContext);
-      const reply = await fetchTeamAiResponse(prompt);
+      let prompt = buildPrompt(userText, mode, scopedContext);
+      const lockedCustomer = safety?.byKey(currentAccountKey);
+      if (lockedCustomer) {
+        prompt += `\n\nCURRENT TICKET — VERIFIED CUSTOMER: ${lockedCustomer.company}\nExact Zoho Account Name: ${lockedCustomer.account || 'Needs verification in Zoho Desk'}\nSubject customer label: ${lockedCustomer.subject}. Never replace this customer with a company merely mentioned in a ticket list, previous conversation, or forwarded email. Preserve the actual current alert platform (Zerto is not RackWare). If the supplied current ticket conflicts, flag it instead of guessing.`;
+      }
+      const reply = await fetchTeamAiResponse(prompt, mode === 'qa' || mode === 'bridge');
+      // Prevent delayed responses from being inserted into another profile or chat.
+      if (state.activeProfileId !== sendingProfile || state.activeSessionId !== sendingSession) return;
       let normalizedReply = normalizeAssistantOutput(reply, mode);
       let classificationCorrections = [];
       if (mode === "standard" && window.MAUSandzTicketRules) {
         const checked = window.MAUSandzTicketRules.fixZohoText(normalizedReply, combinedInput);
         normalizedReply = checked.text;
         classificationCorrections = checked.changes;
+      }
+      if (mode === 'standard' && safety && currentAccountKey) {
+        const verified = safety.enforceZoho(normalizedReply,currentAccountKey,combinedInput);
+        normalizedReply=verified.text;
+        classificationCorrections.push(...verified.changes.map(field=>'Verified '+field));
+      }
+      // Never let a reply intended for one customer contain another customer's
+      // ticket subject. Stop it before chat display, copying, or autofill.
+      if (mode === 'standard' && lockedCustomer) {
+        const nameLine=normalizedReply.match(/^\s*Customer Company Name:[ \t]*(.+)$/im);
+        const subjectLine=normalizedReply.match(/^\s*Subject:[ \t]*(.+)$/im);
+        const wrongName=nameLine && safety.fromValue(nameLine[1]) && safety.fromValue(nameLine[1]).key !== lockedCustomer.key;
+        const wrongSubject=subjectLine && safety.fromValue(subjectLine[1].replace(/^SANDZ-(?:MSDCO|SI)-/i,'')) && safety.fromValue(subjectLine[1].replace(/^SANDZ-(?:MSDCO|SI)-/i,'')).key !== lockedCustomer.key;
+        if (wrongName || wrongSubject) throw new Error('Customer mismatch detected in the generated ticket. Nothing was copied or sent. Please generate again with the correct current ticket.');
       }
       state.chatConversation.push({
         role: "user",
@@ -2972,12 +3123,19 @@ Severity answer structure:
         updateWorkspaceFromAssistantReply(normalizedReply);
       }
     } catch (error) {
-      addMessage(error.message || "The assistant request failed.", "ai");
+      if (state.activeProfileId === sendingProfile && state.activeSessionId === sendingSession)
+        addMessage(error.message || "The assistant request failed.", "ai");
     } finally {
       setLoading(false);
     }
   }
 
+
+  window.MAUGetTicketCustomerLock = function () {
+    const session=getActiveSession();
+    if (!session || !session.lastPromptedAccount) return null;
+    return {key:normalizeText(session.lastPromptedAccount),sessionId:session.id,profileId:state.activeProfileId};
+  };
   function clearChatHistory() {
     $("chat-messages").innerHTML = "";
     state.chatConversation = [];
@@ -2988,6 +3146,7 @@ Severity answer structure:
       session.lastContextResetAt = "";
       markActiveSessionUpdated();
     }
+    showActiveCustomerLabel('');
     persistChatMessages();
     persistConversation();
     closeClearChatModal();
@@ -3005,6 +3164,12 @@ Severity answer structure:
     applySessionToUi(nextSession);
     saveCurrentCodeToHistory(true);
     showSnackbar(`Switched to ${nextSession.name}.`);
+  }
+
+  function quickNewChat() {
+    startCleanCustomerChat('', false);
+    showSnackbar('New chat started.');
+    $('chat-input')?.focus();
   }
 
   function createChatSession() {
@@ -3161,6 +3326,8 @@ Severity answer structure:
               : "Paste the monitoring alert, customer request, or incident details...";
         });
       });
+      $("chatNewChatBtn")?.addEventListener("click", quickNewChat);
+      $("chatCreateTicketBtn")?.addEventListener("click", () => $("createZohoTicketBtn")?.click());
       $("clear-chat-btn").addEventListener("click", openClearChatModal);
       $("confirmClearChatBtn").addEventListener("click", clearChatHistory);
       $("chatSessionSelect").addEventListener("change", function (event) {
@@ -3276,6 +3443,8 @@ Severity answer structure:
   window.nextCode = nextCode;
   window.addMessage = addMessage;
   window.sendMessage = sendMessage;
+  window.MAUStartFreshChat = quickNewChat;
+  window.MAUFindIncomingCustomer = findIncomingCustomer;
   window.saveCurrentCodeToHistory = saveCurrentCodeToHistory;
   window.updateHistoryButtonsState = updateHistoryButtonsState;
   window.closeDiffModal = closeDiffModal;

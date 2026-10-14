@@ -1045,6 +1045,10 @@
     }
 
     const payload = buildZohoPayload(workspaceText);
+    const currentLock=window.MAUGetTicketCustomerLock?.();
+    if (currentLock?.key && window.MAUCustomerSafety) {
+      window.MAUCustomerSafety.enforcePayload(payload,currentLock.key,workspaceText);
+    }
     copyFallbackPayload(payload);
     const targetUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_ZOHO_NEW_TICKET_URL;
     const fallbackUrl = buildHashFallbackUrl(payload, targetUrl);
