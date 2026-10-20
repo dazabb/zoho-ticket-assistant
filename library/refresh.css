@@ -486,3 +486,10 @@ body.theme-dark .zoho-extension-help{color:#aab6c8}
 /* v2.8: make the required Zoho extension version visible on the setup dialog. */
 .zoho-extension-version{display:inline-block;vertical-align:middle;margin-left:6px;font-size:12px;font-weight:700;letter-spacing:0;padding:3px 9px;border-radius:999px;background:#e9f0ff;color:#235dc4}
 body.theme-dark .zoho-extension-version{background:#253e64;color:#b9d1ff}
+
+/* v2.9 — Managed Services / CSA Generator */
+#csaPane{display:flex;flex:1 1 auto;min-height:0;min-width:0;padding:0 16px 18px;background:var(--mau-bg)}
+#csaFrame{display:block;width:100%;height:100%;min-height:0;border:1px solid var(--mau-border);border-radius:16px;background:var(--mau-surface);box-shadow:var(--mau-shadow)}
+body.theme-dark #csaPane,body.theme-dark #csaFrame{background:#1b1d22}
+@media(max-width:850px){#csaPane{padding:0 12px 12px}}
+@media(max-width:680px){#csaPane{padding:0 8px 8px}}

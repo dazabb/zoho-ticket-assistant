@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>CSA Generator — MAU Operation Desk</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hero compact">
+      <div>
+        <p class="eyebrow">MANAGED SERVICES</p>
+        <h1>CSA Generator</h1>
+        <p class="lede">Paste one Zoho ticket or several ticket blocks, review the extracted values, and generate CSA DOCX files locally in your browser.</p>
+      </div>
+      <div class="privacy">
+        Browser-only workflow<br>
+        <strong>No document upload required</strong>
+        <span>The built-in CSA template is used automatically. Ticket text and generated DOCX files stay in this browser session.</span>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="section-head multi-head">
+        <div><span class="step">1</span><h2>Paste ticket data</h2></div>
+        <div class="head-actions">
+          <button class="btn" id="extractBtn" type="button">Extract one ticket</button>
+          <button class="btn primary" id="extractAllBtn" type="button">Extract all to batch</button>
+        </div>
+      </div>
+      <textarea id="ticketText" class="ticket-input" placeholder="Paste one or multiple Zoho tickets here...\n\nFor multiple tickets, paste complete ticket copies back-to-back or separate custom field blocks with --- or ====."></textarea>
+      <p class="hint">The parser now trims flattened email text after schedule values, preserves Unicode and special characters such as ñ, &, /, parentheses, apostrophes, and dashes, and prioritizes the main Zoho ticket number beside <strong>Reply All</strong>.</p>
+    </section>
+
+    <section class="card" id="editorCard">
+      <div class="section-head">
+        <div><span class="step">2</span><h2>Review & edit</h2></div>
+        <div class="locked-note">Support Agent + Assigned Engineer stay blank</div>
+      </div>
+
+      <div class="grid two">
+        <label>Ticket Number<input id="ticket_number" inputmode="numeric" autocomplete="off" /></label>
+        <label>Company / Store Name<input id="company_name" autocomplete="off" /></label>
+        <label>Contact Name<input id="contact_name" autocomplete="off" /></label>
+        <label>Mobile Number<input id="mobile_number" autocomplete="off" /></label>
+        <label>Customer Visit Schedule Date<input id="visit_schedule" placeholder="October 20, 2026 9:00 AM" autocomplete="off" /></label>
+        <label>Created Date/Time<input id="created_date" autocomplete="off" /></label>
+      </div>
+
+      <label class="full">Location Address<textarea id="location_address" rows="2"></textarea></label>
+
+      <div class="subhead">Ticket Information</div>
+      <div class="grid two">
+        <label>Ticket Category<input id="ticket_category" autocomplete="off" /></label>
+        <label>Issue Category<input id="issue_category" autocomplete="off" /></label>
+        <label>Issue Description<input id="issue_description" autocomplete="off" /></label>
+        <label>Serial Number<input id="serial_number" autocomplete="off" /></label>
+      </div>
+
+      <label class="full">Engineer Task / Activity
+        <textarea id="engineer_tasks" rows="7" placeholder="One task per line. No bullets and no blank lines."></textarea>
+      </label>
+
+      <div id="analysisBox" class="analysis-box" aria-live="polite"></div>
+
+      <div class="template-row">
+        <div>
+          <div class="template-title"><strong>CSA document template</strong><span id="templateState" class="template-state">Checking built-in template…</span></div>
+          <p>The bundled CSA template is loaded automatically, so you can generate DOCX files immediately without selecting or uploading a template.</p>
+        </div>
+        <details class="advanced-template">
+          <summary>Advanced: use a different CSA template</summary>
+          <div class="template-picker">
+            <input type="file" id="templateFile" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+            <button class="btn small ghost" id="resetTemplateBtn" type="button">Return to built-in template</button>
+          </div>
+        </details>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="generateBtn" type="button">Generate current DOCX</button>
+        <button class="btn" id="addBatchBtn" type="button">Add / update batch</button>
+        <button class="btn ghost" id="clearBtn" type="button">Clear form</button>
+      </div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
+    </section>
+
+    <section class="card preview-card">
+      <div class="section-head"><div><span class="step">3</span><h2>Plain-text preview</h2></div></div>
+      <pre id="preview">Fill or extract a ticket to preview it here.</pre>
+    </section>
+
+    <section class="card" id="batchCard">
+      <div class="section-head batch-head">
+        <div><span class="step">4</span><h2>Batch queue</h2><span id="batchCount" class="count-pill"></span></div>
+        <div class="head-actions">
+          <button class="btn ghost small" id="clearBatchBtn" type="button">Clear batch</button>
+          <button class="btn primary" id="downloadBatchBtn" type="button" disabled>Download all as ZIP</button>
+        </div>
+      </div>
+      <div id="batchEmpty" class="empty">No tickets added yet. Paste several ticket blocks above and choose <strong>Extract all to batch</strong>.</div>
+      <div class="batch-list" id="batchList"></div>
+    </section>
+
+    <footer>
+      <strong>CSA rules built in:</strong> full physical address over region-only placeholders, current Philippine date for Created Date/Time, clean schedule extraction, numeric ticket filenames, one task per line, Unicode/special-character preservation, and blank Support Agent / Assigned Engineer values.
+    </footer>
+  </main>
+
+  <script src="./vendor/jszip.min.js"></script>
+  <script src="./parser.js"></script>
+  <script src="./docx-engine.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
