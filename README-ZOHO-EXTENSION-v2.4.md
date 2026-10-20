@@ -4,10 +4,10 @@
 
 If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or disable it first to avoid duplicate autofill actions.
 
-1. Extract `MAU-Zoho-Extension-v1.2.zip` to a folder (MAU-Zoho-Extension).
+1. Extract `MAU-Zoho-Extension-v1.3.zip` to a folder (MAU-Zoho-Extension).
 2. Open **chrome://extensions/** in the Chrome address bar.
 3. Turn on **Developer mode** (upper-right corner).
-4. Click **Load unpacked** and select the extracted **MAU-Zoho-Extension** folder.
+4. If an older MAU extension is installed, remove it first or update and reload the extracted folder. Click **Load unpacked** and select the extracted **MAU-Zoho-Extension** folder.
 5. If you run MAU by directly opening `index.html` (file://), open the extension **Details** and turn on **Allow access to file URLs**. The recommended method is to start MAU using `START-MAU-DESK.bat` and `http://127.0.0.1:3000`.
 6. Return to MAU, click **Install extension** > **Check connection**. You should see **Zoho extension connected**.
 7. Generate a Zoho ticket using Gemini, click **Create Ticket**, then review the fields in the newly opened Zoho form. Submit manually when everything looks correct.

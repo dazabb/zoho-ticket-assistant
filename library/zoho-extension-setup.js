@@ -20,19 +20,26 @@
     return new Promise((resolve) => {
       const requestId = `mau-ping-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       let finished = false;
-      const finish = (connected) => {
+      const finish = (connected, message = connected ? "Zoho extension v1.3 connected. You can use Create Ticket." : "Zoho extension v1.3 is not connected yet. Follow the steps below.") => {
         if (finished) return;
         finished = true;
         window.removeEventListener("message", onReply);
         window.clearTimeout(timer);
         lastCheck = connected;
-        setStatus(connected ? "Zoho extension connected. You can use Create Ticket." : "Extension not connected yet. Follow the steps below.", connected ? "ok" : "bad");
+        setStatus(message, connected ? "ok" : "bad");
         resolve(connected);
       };
       function onReply(e) {
         const data = e.data;
         if (e.source !== window || (location.protocol === "file:" ? e.origin !== "null" : e.origin !== location.origin) || !data || data.type !== "zta:bridge-response" || data.requestId !== requestId) return;
-        finish(!!data.ok);
+        const version = String(data.response?.version || "");
+        const parsed = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(version);
+        const compatible = parsed && (Number(parsed[1]) > 1 || (Number(parsed[1]) === 1 && Number(parsed[2]) >= 3));
+        if (data.ok && !compatible) {
+          finish(false, version
+            ? `Zoho extension v${version} detected. Please upgrade to v1.3 or newer and reload the MAU and Zoho tabs.`
+            : "An older Zoho extension was detected. Please install v1.3 and reload MAU and Zoho tabs.");
+        } else finish(!!data.ok, data.ok ? `Zoho extension v${version} connected. You can use Create Ticket.` : undefined);
       }
       const timer = window.setTimeout(() => finish(false), timeoutMs);
       window.addEventListener("message", onReply);

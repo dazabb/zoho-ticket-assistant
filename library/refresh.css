@@ -482,3 +482,7 @@ body.theme-dark .zoho-extension-help{color:#aab6c8}
 .zoho-destination-buttons button{border:1px solid var(--mau-border);border-radius:9px;padding:10px 14px;background:var(--mau-secondary);color:var(--mau-text);font-weight:650;cursor:pointer}
 .zoho-destination-buttons .zoho-destination-primary{background:var(--mau-blue);color:#fff;border-color:var(--mau-blue)}
 .zoho-destination-buttons button:disabled{opacity:.45;cursor:not-allowed}
+
+/* v2.8: make the required Zoho extension version visible on the setup dialog. */
+.zoho-extension-version{display:inline-block;vertical-align:middle;margin-left:6px;font-size:12px;font-weight:700;letter-spacing:0;padding:3px 9px;border-radius:999px;background:#e9f0ff;color:#235dc4}
+body.theme-dark .zoho-extension-version{background:#253e64;color:#b9d1ff}

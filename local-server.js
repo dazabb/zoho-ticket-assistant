@@ -7,7 +7,7 @@ const TYPES={'.html':'text/html','.css':'text/css','.js':'application/javascript
 http.createServer((req,res)=>{
   let segments;
   try{const url=new URL(req.url,'http://127.0.0.1');segments=decodeURIComponent(url.pathname).split('/').filter(Boolean);}catch(e){res.writeHead(400);res.end('Bad request');return;}
-  const allowed=new Set(['index.html','library','reporting','images','MAU-Zoho-Extension-v1.1.zip']);
+  const allowed=new Set(['index.html','library','reporting','images','MAU-Zoho-Extension-v1.3.zip']);
   if(segments.length===0)segments=['index.html'];
   if(!allowed.has(segments[0])||segments.some(x=>x==='..'||x==='.'||x.startsWith('.'))||(!['library','reporting','images'].includes(segments[0])&&segments.length!==1)){
     res.writeHead(404);res.end('Not found');return;
