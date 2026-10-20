@@ -136,9 +136,10 @@ ${tasks}`;
   }
 
   async function getTemplateBytes() {
+    if (!window.CSADocx) throw new Error("CSA DOCX engine failed to initialize. Refresh the page (Ctrl+F5). No template upload is required.");
     const file = $("templateFile").files[0] || null;
-    if (file) return await CSADocx.loadTemplateBytes(file);
-    if (!bundledTemplateCache) bundledTemplateCache = await CSADocx.loadTemplateBytes(null);
+    if (file) return await window.CSADocx.loadTemplateBytes(file);
+    if (!bundledTemplateCache) bundledTemplateCache = await window.CSADocx.loadTemplateBytes(null);
     return bundledTemplateCache.slice(0);
   }
 
@@ -146,7 +147,7 @@ ${tasks}`;
     const badge = $("templateState");
     try {
       await getTemplateBytes();
-      badge.textContent = "Built-in template ready";
+      badge.textContent = "Embedded template ready";
       badge.classList.add("ready");
       badge.classList.remove("failed");
     } catch (err) {
@@ -154,7 +155,7 @@ ${tasks}`;
       badge.textContent = "Built-in template unavailable";
       badge.classList.remove("ready");
       badge.classList.add("failed");
-      setStatus("The built-in CSA template could not be loaded. Re-upload the managed-services/csa-generator/assets/CSA_TEMPLATE.docx file to GitHub.", "error");
+      setStatus("The embedded CSA generator could not initialize. Refresh the page; no template upload is required.", "error");
     }
   }
 
@@ -167,7 +168,7 @@ ${tasks}`;
       throw new Error("The visit schedule still contains extra copied text. Review the schedule field before generating.");
     }
     const templateBytes = await getTemplateBytes();
-    const blob = await CSADocx.generateDocxBlob(templateBytes, normalized);
+    const blob = await window.CSADocx.generateDocxBlob(templateBytes, normalized);
     triggerDownload(blob, `${ticket}.docx`);
     return ticket;
   }
@@ -260,7 +261,7 @@ ${tasks}`;
       if (contaminated.length) throw new Error(`Review the visit schedule for ticket${contaminated.length > 1 ? "s" : ""} ${contaminated.map(x => x.ticket_number).join(", ")} before batch generation.`);
       const templateBytes = await getTemplateBytes();
       const normalized = batch.map(item => ({...item, visit_schedule: CSAParser.normalizeSchedule(item.visit_schedule || "")}));
-      const blob = await CSADocx.generateBatchZip(templateBytes, normalized);
+      const blob = await window.CSADocx.generateBatchZip(templateBytes, normalized);
       triggerDownload(blob, "CSA_Batch.zip");
       setStatus(`Generated ZIP with ${batch.length} CSA file${batch.length === 1 ? "" : "s"}.`, "success");
     } catch (err) {
@@ -320,4 +321,21 @@ ${tasks}`;
   renderBatch();
   updatePreview();
   verifyBundledTemplate();
+
+  // Browser QA hook. It is inert during normal use but lets automated checks
+  // exercise the exact parser + DOCX generator used by GitHub Pages.
+  window.CSAAppTest = {
+    extract: (text) => CSAParser.extractTicketData(text),
+    extractMany: (text) => CSAParser.extractMultipleTicketData(text),
+    generateBase64: async (data) => {
+      const bytes = await getTemplateBytes();
+      const blob = await window.CSADocx.generateDocxBlob(bytes, data);
+      const arr = new Uint8Array(await blob.arrayBuffer());
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < arr.length; i += chunk) binary += String.fromCharCode(...arr.subarray(i, i + chunk));
+      return btoa(binary);
+    }
+  };
+
 })();
