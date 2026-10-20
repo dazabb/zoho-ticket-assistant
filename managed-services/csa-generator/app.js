@@ -38,9 +38,12 @@
     const root = $("analysisBox");
     root.innerHTML = "";
     root.classList.toggle("has-warning", result.warnings.length > 0);
-    const title = document.createElement("strong");
-    title.textContent = result.warnings.length ? "Extraction check — review needed" : "Extraction check — looks clean";
-    root.appendChild(title);
+    root.hidden = !result.warnings.length;
+    if (result.warnings.length) {
+      const title = document.createElement("strong");
+      title.textContent = "Please check these details:";
+      root.appendChild(title);
+    }
 
     if (result.warnings.length) {
       const ul = document.createElement("ul");
@@ -52,34 +55,10 @@
       root.appendChild(ul);
     }
 
-    if (result.notes.length) {
-      const note = document.createElement("p");
-      note.textContent = result.notes.join(" ");
-      root.appendChild(note);
-    }
   }
 
   function updatePreview() {
-    const d = getFormData();
-    const tasks = d.engineer_tasks.length ? d.engineer_tasks.join("\n") : "";
-    $("preview").textContent =
-`Company Name: ${d.company_name}
-Contact Name: ${d.contact_name}
-Mobile Number: ${d.mobile_number}
-Customer Visit Schedule Date: ${d.visit_schedule}
-Created Date/Time: ${d.created_date}
-Location Address: ${d.location_address}
-
-Ticket Information:
-
-Ticket Category: ${d.ticket_category}
-Issue Category: ${d.issue_category}
-Issue Description: ${d.issue_description}
-Serial Number: ${d.serial_number}
-
-Engineer Task/Activity:
-${tasks}`;
-    renderAnalysis(d);
+    renderAnalysis(getFormData());
   }
 
   function extractTicket() {
@@ -90,7 +69,8 @@ ${tasks}`;
       if (!data.ticket_number) return setStatus("No ticket number was detected. Review the pasted text or enter the ticket number manually.", "error");
       fillForm(data);
       const analysis = CSAParser.analyzeTicketData(data);
-      setStatus(analysis.warnings.length ? "Fields extracted. Please review the flagged items before generating." : "Fields extracted and checked. Review them, then generate the CSA.", analysis.warnings.length ? "" : "success");
+      $("editDetails").open = true;
+      setStatus(analysis.warnings.length ? "Some details need checking. Please review them below." : "Ticket details are ready to edit.", analysis.warnings.length ? "" : "success");
       $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
     } catch (err) {
       setStatus(err?.message || "Extraction failed.", "error");
@@ -116,7 +96,7 @@ ${tasks}`;
       renderBatch();
       fillForm(items[0]);
       const warningCount = items.reduce((sum, item) => sum + CSAParser.analyzeTicketData(item).warnings.length, 0);
-      setStatus(`${items.length} ticket${items.length === 1 ? "" : "s"} extracted and added to the batch queue${warningCount ? `; ${warningCount} review item${warningCount === 1 ? "" : "s"} flagged` : ""}.`, warningCount ? "" : "success");
+      setStatus(`${items.length} ticket${items.length === 1 ? "" : "s"} added.${warningCount ? " Please check any missing details before downloading." : ""}`, warningCount ? "" : "success");
       $("batchCard").scrollIntoView({behavior:"smooth", block:"start"});
     } catch (err) {
       console.error(err);
@@ -136,7 +116,7 @@ ${tasks}`;
   }
 
   async function getTemplateBytes() {
-    if (!window.CSADocx) throw new Error("CSA DOCX engine failed to initialize. Refresh the page (Ctrl+F5). No template upload is required.");
+    if (!window.CSADocx) throw new Error("CSA is unavailable right now. Please refresh the page.");
     const file = $("templateFile").files[0] || null;
     if (file) return await window.CSADocx.loadTemplateBytes(file);
     if (!bundledTemplateCache) bundledTemplateCache = await window.CSADocx.loadTemplateBytes(null);
@@ -147,7 +127,7 @@ ${tasks}`;
     const badge = $("templateState");
     try {
       await getTemplateBytes();
-      badge.textContent = "Embedded template ready";
+      badge.textContent = "Ready";
       badge.classList.add("ready");
       badge.classList.remove("failed");
     } catch (err) {
@@ -155,7 +135,7 @@ ${tasks}`;
       badge.textContent = "Built-in template unavailable";
       badge.classList.remove("ready");
       badge.classList.add("failed");
-      setStatus("The embedded CSA generator could not initialize. Refresh the page; no template upload is required.", "error");
+      setStatus("CSA is unavailable right now. Please refresh the page.", "error");
     }
   }
 
@@ -169,23 +149,48 @@ ${tasks}`;
     }
     const templateBytes = await getTemplateBytes();
     const blob = await window.CSADocx.generateDocxBlob(templateBytes, normalized);
-    triggerDownload(blob, `${ticket}.docx`);
+    triggerDownload(blob, `#${ticket}.docx`);
     return ticket;
   }
 
   async function generateDocx() {
     const data = getFormData();
     if (!data.ticket_number) return setStatus("Ticket number is required.", "error");
-    setStatus("Generating DOCX locally in your browser…");
+    setStatus("Preparing your CSA…");
     $("generateBtn").disabled = true;
     try {
       const ticket = await generateOne(data);
-      setStatus(`Generated ${ticket}.docx using the ${$("templateFile").files[0] ? "selected custom" : "built-in"} CSA template.`, "success");
+      setStatus(`CSA #${ticket} downloaded.`, "success");
     } catch (err) {
       console.error(err);
       setStatus(err?.message || "Could not generate the DOCX.", "error");
     } finally {
       $("generateBtn").disabled = false;
+    }
+  }
+
+  async function downloadFromPaste() {
+    const text = $("ticketText").value.trim();
+    if (!text) return setStatus("Paste the Zoho ticket first.", "error");
+    const button = $("quickCreateBtn");
+    button.disabled = true;
+    setStatus("Preparing your CSA…");
+    try {
+      const data = CSAParser.extractTicketData(text);
+      if (!data.ticket_number) throw new Error("Couldn't find the ticket number. Click Edit details first to add it.");
+      const problems = CSAParser.analyzeTicketData(data).warnings;
+      if (problems.some(x => /copied email\/UI text/i.test(x))) {
+        fillForm(data);
+        $("editDetails").open = true;
+        $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
+        throw new Error("Please check the visit date before downloading.");
+      }
+      const ticket = await generateOne(data);
+      setStatus(`CSA #${ticket} downloaded.${problems.length ? " Some information was missing; check the document before using it." : ""}`, "success");
+    } catch (err) {
+      setStatus(err?.message || "Couldn't create this CSA. Please check the ticket details.", "error");
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -197,6 +202,7 @@ ${tasks}`;
     const root = $("batchList");
     root.innerHTML = "";
     $("batchEmpty").style.display = batch.length ? "none" : "block";
+    $("batchCard").hidden = !batch.length;
     $("downloadBatchBtn").disabled = !batch.length;
     $("batchCount").textContent = batch.length ? `${batch.length} ticket${batch.length === 1 ? "" : "s"}` : "";
 
@@ -207,11 +213,11 @@ ${tasks}`;
       el.innerHTML = `<div class="batch-main">
           <div class="batch-ticket">#${escapeHtml(item.ticket_number)}</div>
           <div class="batch-company">${escapeHtml(item.company_name || "(No company name)")}</div>
-          <div class="batch-date">${escapeHtml(item.visit_schedule || "No schedule")}${analysis.warnings.length ? ` · ${analysis.warnings.length} review` : ""}</div>
+          <div class="batch-date">${escapeHtml(item.visit_schedule || "Schedule not set")}${analysis.warnings.length ? " · Check details" : ""}</div>
         </div>
         <div class="batch-actions">
           <button class="batch-action edit" type="button" data-i="${i}">Edit</button>
-          <button class="batch-action download" type="button" data-i="${i}">DOCX</button>
+          <button class="batch-action download" type="button" data-i="${i}">Download</button>
           <button class="remove" type="button" title="Remove" aria-label="Remove ticket ${escapeHtml(item.ticket_number)}" data-i="${i}">×</button>
         </div>`;
       root.appendChild(el);
@@ -225,7 +231,8 @@ ${tasks}`;
       const item = batch[Number(btn.dataset.i)];
       if (!item) return;
       fillForm(item);
-      setStatus(`Loaded ticket ${item.ticket_number} for review. Click Add / update batch after editing.`, "success");
+      $("editDetails").open = true;
+      setStatus(`Editing ticket #${item.ticket_number}. Save changes below when you're done.`, "success");
       $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
     }));
     root.querySelectorAll(".download").forEach(btn => btn.addEventListener("click", async () => {
@@ -234,7 +241,7 @@ ${tasks}`;
       btn.disabled = true;
       try {
         const ticket = await generateOne(item);
-        setStatus(`Generated ${ticket}.docx.`, "success");
+        setStatus(`CSA #${ticket} downloaded.`, "success");
       } catch (err) {
         console.error(err);
         setStatus(err?.message || "Could not generate the DOCX.", "error");
@@ -249,12 +256,12 @@ ${tasks}`;
     if (!data.ticket_number) return setStatus("Ticket number is required before adding to batch.", "error");
     addOrUpdateBatch(data);
     renderBatch();
-    setStatus(`Ticket ${data.ticket_number} added/updated in batch.`, "success");
+    setStatus(`Ticket #${data.ticket_number} saved to the list.`, "success");
   }
 
   async function downloadBatch() {
     if (!batch.length) return;
-    setStatus("Generating ZIP locally in your browser…");
+    setStatus("Preparing your CSA files…");
     $("downloadBatchBtn").disabled = true;
     try {
       const contaminated = batch.filter(item => CSAParser.analyzeTicketData(item).warnings.some(x => /copied email\/UI text/i.test(x)));
@@ -263,7 +270,7 @@ ${tasks}`;
       const normalized = batch.map(item => ({...item, visit_schedule: CSAParser.normalizeSchedule(item.visit_schedule || "")}));
       const blob = await window.CSADocx.generateBatchZip(templateBytes, normalized);
       triggerDownload(blob, "CSA_Batch.zip");
-      setStatus(`Generated ZIP with ${batch.length} CSA file${batch.length === 1 ? "" : "s"}.`, "success");
+      setStatus(`${batch.length} CSA file${batch.length === 1 ? "" : "s"} downloaded.`, "success");
     } catch (err) {
       console.error(err);
       setStatus(err?.message || "Could not generate the ZIP.", "error");
@@ -282,7 +289,7 @@ ${tasks}`;
   function clearBatch() {
     batch.splice(0, batch.length);
     renderBatch();
-    setStatus("Batch queue cleared.", "success");
+    setStatus("Ticket list cleared.", "success");
   }
 
   function resetTemplate() {
@@ -303,6 +310,7 @@ ${tasks}`;
     }
   } catch (_) {}
 
+  $("quickCreateBtn").addEventListener("click", downloadFromPaste);
   $("extractBtn").addEventListener("click", extractTicket);
   $("extractAllBtn").addEventListener("click", extractAllTickets);
   $("generateBtn").addEventListener("click", generateDocx);

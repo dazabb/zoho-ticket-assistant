@@ -172,7 +172,7 @@
       const ticket = String(item.ticket_number || "").replace(/\D/g, "");
       if (!ticket || seen.has(ticket)) continue;
       seen.add(ticket);
-      out.file(`${ticket}.docx`, await generateDocxBlob(templateBytes, item));
+      out.file(`#${ticket}.docx`, await generateDocxBlob(templateBytes, item));
     }
     return await out.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
   }

@@ -493,3 +493,14 @@ body.theme-dark .zoho-extension-version{background:#253e64;color:#b9d1ff}
 body.theme-dark #csaPane,body.theme-dark #csaFrame{background:#1b1d22}
 @media(max-width:850px){#csaPane{padding:0 12px 12px}}
 @media(max-width:680px){#csaPane{padding:0 8px 8px}}
+
+/* v3.0 — simplified Zoho extension setup */
+.zoho-extension-dialog{max-width:510px;padding:26px 28px}
+.zoho-extension-intro{margin:17px 0 0;color:#5b677a;font-size:13px;line-height:1.5}
+.zoho-extension-steps{gap:13px;margin:16px 0 22px;font-size:13px;line-height:1.6}
+.zoho-extension-dialog-actions{margin-top:18px}
+.zoho-extension-dialog-actions button{min-width:100px}
+.zoho-extension-overlay.is-connected #zohoExtensionInstallSteps{display:none}
+.zoho-extension-help{margin-top:12px}
+body.theme-dark .zoho-extension-intro{color:#b4becc}
+@media(max-width:600px){.zoho-extension-dialog{padding:20px}}

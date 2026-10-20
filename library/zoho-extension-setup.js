@@ -12,6 +12,7 @@
     status.classList.toggle("is-ok", state === "ok");
     status.classList.toggle("is-bad", state === "bad");
     installButton?.classList.toggle("connected", state === "ok");
+    overlay?.classList.toggle("is-connected", state === "ok");
     if (state === "ok" && installButton) installButton.textContent = "Extension ready";
     else if (installButton) installButton.textContent = "Install extension";
   }
@@ -20,7 +21,7 @@
     return new Promise((resolve) => {
       const requestId = `mau-ping-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       let finished = false;
-      const finish = (connected, message = connected ? "Zoho extension v1.3 connected. You can use Create Ticket." : "Zoho extension v1.3 is not connected yet. Follow the steps below.") => {
+      const finish = (connected, message = connected ? "Zoho is ready. You can use Create Ticket." : "Install the Zoho extension, then click Refresh.") => {
         if (finished) return;
         finished = true;
         window.removeEventListener("message", onReply);
@@ -37,13 +38,18 @@
         const compatible = parsed && (Number(parsed[1]) > 1 || (Number(parsed[1]) === 1 && Number(parsed[2]) >= 3));
         if (data.ok && !compatible) {
           finish(false, version
-            ? `Zoho extension v${version} detected. Please upgrade to v1.3 or newer and reload the MAU and Zoho tabs.`
-            : "An older Zoho extension was detected. Please install v1.3 and reload MAU and Zoho tabs.");
-        } else finish(!!data.ok, data.ok ? `Zoho extension v${version} connected. You can use Create Ticket.` : undefined);
+            ? `Extension v${version} is out of date. Install v1.3, then click Refresh.`
+            : "Please install extension v1.3, then click Refresh.");
+        } else finish(!!data.ok, data.ok ? `Zoho is ready. You can use Create Ticket.` : undefined);
       }
       const timer = window.setTimeout(() => finish(false), timeoutMs);
       window.addEventListener("message", onReply);
-      window.postMessage({ type: "zta:bridge-request", requestId, action: "pingMauZohoExtension", data: {} }, location.protocol === "file:" ? "*" : location.origin);
+      try {
+        // An offline preview (about:blank) has a null origin; avoid an
+        // uncaught exception while still supporting local file:// use.
+        const target = location.origin === "null" || location.protocol === "file:" ? "*" : location.origin;
+        window.postMessage({ type: "zta:bridge-request", requestId, action: "pingMauZohoExtension", data: {} }, target);
+      } catch (_) { finish(false); }
     });
   }
 
@@ -56,7 +62,7 @@
 
   $("openZohoExtensionSettingsBtn")?.addEventListener("click", open);
   installButton?.addEventListener("click", open);
-  $("checkZohoExtensionBtn")?.addEventListener("click", () => { setStatus("Checking extension…"); checkConnection(2200); });
+  $("checkZohoExtensionBtn")?.addEventListener("click", () => { window.location.reload(); });
   $("closeZohoExtensionGuide")?.addEventListener("click", close);
   $("closeZohoExtensionBottomBtn")?.addEventListener("click", close);
   overlay?.addEventListener("click", (e) => { if(e.target === overlay) close(); });

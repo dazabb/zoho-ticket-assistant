@@ -196,17 +196,17 @@
     <section class="zoho-extension-dialog" role="dialog" aria-modal="true" aria-labelledby="zohoExtensionTitle">
       <div class="zoho-extension-heading"><h2 id="zohoExtensionTitle">Set up Zoho autofill <span class="zoho-extension-version">v1.3</span></h2><button type="button" id="closeZohoExtensionGuide" class="zoho-extension-x" aria-label="Close">×</button></div>
       <p id="zohoExtensionStatus" role="status" aria-live="polite">Checking extension…</p>
-      <ol class="zoho-extension-steps">
-        <li><a id="downloadZohoExtension" href="MAU-Zoho-Extension-v1.3.zip" download="MAU-Zoho-Extension-v1.3.zip">Download Zoho Extension v1.3</a> and extract the ZIP.</li>
-        <li>In Chrome, open <strong>chrome://extensions</strong>. <button type="button" class="zoho-copy-link" id="copyChromeExtensionsUrl">Copy address</button></li>
-        <li>Turn on <strong>Developer mode</strong>, then choose <strong>Load unpacked</strong>.</li>
-        <li>If an older MAU extension is installed, remove it or replace its folder, then <strong>Reload</strong> it in Chrome.</li>
-        <li>Select the extracted <strong>MAU-Zoho-Extension</strong> folder when using <strong>Load unpacked</strong>.</li>
-        <li>If you open <code>index.html</code> directly instead of using the start file, enable <strong>Allow access to file URLs</strong> in the extension's Details.</li>
-      </ol>
-      <div class="zoho-extension-dialog-actions"><button type="button" id="checkZohoExtensionBtn" class="zoho-primary">Check connection</button><button type="button" id="closeZohoExtensionBottomBtn">Close</button></div>
-      <p class="zoho-extension-help">The extension is installed manually through Chrome. Updating the app does not automatically update an existing extension.</p>
-      <p class="zoho-extension-help">After connecting, click <strong>Create Ticket</strong>. If an existing Zoho Edit Ticket tab is open, MAU lets you choose it or open a new ticket. Existing tickets require an explicit confirmation before any fields are changed. MAU never clicks Save or Submit.</p>
+      <div id="zohoExtensionInstallSteps">
+        <p class="zoho-extension-intro">Install the extension once to fill new or existing Zoho tickets.</p>
+        <ol class="zoho-extension-steps">
+          <li><a id="downloadZohoExtension" href="MAU-Zoho-Extension-v1.3.zip" download="MAU-Zoho-Extension-v1.3.zip">Download extension v1.3</a> and extract the ZIP.</li>
+          <li>Open <strong>chrome://extensions</strong> in Chrome. <button type="button" class="zoho-copy-link" id="copyChromeExtensionsUrl">Copy address</button></li>
+          <li>Turn on <strong>Developer mode</strong>, then click <strong>Load unpacked</strong> and select the <strong>MAU-Zoho-Extension</strong> folder.</li>
+          <li>If you had an older MAU extension, remove it first. Return here and click <strong>Refresh</strong>.</li>
+        </ol>
+      </div>
+      <div class="zoho-extension-dialog-actions"><button type="button" id="checkZohoExtensionBtn" class="zoho-primary">Refresh</button><button type="button" id="closeZohoExtensionBottomBtn">Close</button></div>
+      <p class="zoho-extension-help">After refreshing, use <strong>Create Ticket</strong> to fill a new ticket or choose an open Edit Ticket tab. Review the details before saving in Zoho.</p>
     </section>
   </div>
 

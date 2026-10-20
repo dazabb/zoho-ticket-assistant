@@ -139,6 +139,42 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
   .advanced-template summary { text-align: left; }
 }
 
+
+/* v3.0 — employee-friendly CSA workflow */
+.shell{max-width:1050px;padding-top:30px}
+.hero{margin-bottom:22px}
+.hero h1{font-size:32px!important;line-height:1.15}
+.lede{font-size:14px;max-width:560px}
+.card{padding:24px;border-radius:17px;box-shadow:0 5px 24px rgba(25,42,72,.04)}
+.ticket-input{min-height:260px;font-size:14px;line-height:1.6;resize:vertical;padding:16px}
+.ticket-actions{align-items:center;margin-top:16px}
+.ticket-actions .btn{padding:12px 18px;font-size:13px}
+.btn.text-button{color:var(--brand);background:transparent;border-color:transparent;font-size:12px}
+.btn.text-button:hover{background:var(--soft);border-color:transparent}
+.edit-card{padding:0;overflow:hidden}
+.edit-card details{display:block}
+.edit-card summary{list-style:none;cursor:pointer;padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.edit-card summary::-webkit-details-marker{display:none}
+.edit-card summary::after{content:'+';font-size:22px;color:var(--muted);font-weight:400}
+.edit-card details[open] summary::after{content:'−'}
+.summary-copy{display:flex;flex-direction:column;gap:5px}
+.summary-copy strong{font-size:14px}
+.summary-copy span{font-size:12px;color:var(--muted)}
+.edit-content{border-top:1px solid var(--line);padding:24px}
+.edit-content .subhead{margin:22px 0 12px}
+.edit-card .analysis-box[hidden]{display:none}
+.analysis-box{background:var(--soft);border:1px solid var(--line);padding:12px 15px;font-size:12px}
+.analysis-box strong{color:var(--ink)}
+.analysis-box ul{color:var(--ink);line-height:1.55}
+.status:empty{display:none}
+.status:not(:empty){min-height:0;border-radius:9px;background:var(--soft);padding:10px 12px;line-height:1.5}
+.status.error{background:color-mix(in srgb,var(--danger) 8%,var(--card))}
+.status.success{background:color-mix(in srgb,var(--success) 8%,var(--card))}
+.batch-card[hidden]{display:none}
+.batch-card .section-head{flex-wrap:wrap}
+.batch-action.download{font-weight:750}
+@media(max-width:640px){.card{padding:16px}.ticket-actions{display:grid;grid-template-columns:1fr}.ticket-actions .btn{width:100%}.edit-card{padding:0}.edit-card summary{padding:18px}.edit-content{padding:18px}.shell{padding:18px 12px}}
+
   </style>
 </head>
 <body>
@@ -147,33 +183,27 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
       <div>
         <p class="eyebrow">MANAGED SERVICES</p>
         <h1>CSA Generator</h1>
-        <p class="lede">Paste one Zoho ticket or several ticket blocks, review the extracted values, and generate CSA DOCX files locally in your browser.</p>
+        <p class="lede">Paste the Zoho ticket and download the completed CSA form.</p>
       </div>
-      <div class="privacy">
-        Browser-only workflow<br>
-        <strong>No document upload required</strong>
-        <span>The built-in CSA template is used automatically. Ticket text and generated DOCX files stay in this browser session.</span>
-      </div>
-    </header>
+</header>
 
-    <section class="card">
-      <div class="section-head multi-head">
-        <div><span class="step">1</span><h2>Paste ticket data</h2></div>
-        <div class="head-actions">
-          <button class="btn" id="extractBtn" type="button">Extract one ticket</button>
-          <button class="btn primary" id="extractAllBtn" type="button">Extract all to batch</button>
-        </div>
+    <section class="card ticket-card">
+      <div class="section-head">
+        <div><span class="step">1</span><h2>Paste Zoho ticket</h2></div>
       </div>
-      <textarea id="ticketText" class="ticket-input" placeholder="Paste one or multiple Zoho tickets here...\n\nFor multiple tickets, paste complete ticket copies back-to-back or separate custom field blocks with --- or ====."></textarea>
-      <p class="hint">The parser now trims flattened email text after schedule values, preserves Unicode and special characters such as ñ, &, /, parentheses, apostrophes, and dashes, and prioritizes the main Zoho ticket number beside <strong>Reply All</strong>.</p>
+      <textarea id="ticketText" class="ticket-input" aria-label="Paste Zoho ticket details" placeholder="Paste the ticket details here…"></textarea>
+      <div class="actions ticket-actions">
+        <button class="btn primary" id="quickCreateBtn" type="button">Download CSA</button>
+        <button class="btn" id="extractAllBtn" type="button">Add multiple tickets</button>
+        <button class="btn text-button" id="extractBtn" type="button">Edit details first</button>
+      </div>
+      <div class="status" id="status" role="status" aria-live="polite"></div>
     </section>
 
-    <section class="card" id="editorCard">
-      <div class="section-head">
-        <div><span class="step">2</span><h2>Review & edit</h2></div>
-        <div class="locked-note">Support Agent + Assigned Engineer stay blank</div>
-      </div>
-
+    <section class="card edit-card" id="editorCard">
+      <details id="editDetails">
+        <summary><span class="summary-copy"><strong>Edit ticket details</strong><span>Optional — make changes before downloading</span></span></summary>
+        <div class="edit-content">
       <div class="grid two">
         <label>Ticket Number<input id="ticket_number" inputmode="numeric" autocomplete="off" /></label>
         <label>Company / Store Name<input id="company_name" autocomplete="off" /></label>
@@ -197,51 +227,33 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
         <textarea id="engineer_tasks" rows="7" placeholder="One task per line. No bullets and no blank lines."></textarea>
       </label>
 
-      <div id="analysisBox" class="analysis-box" aria-live="polite"></div>
-
-      <div class="template-row">
-        <div>
-          <div class="template-title"><strong>CSA document template</strong><span id="templateState" class="template-state">Checking embedded template…</span></div>
-          <p>The CSA template is embedded directly in this page, so you can generate DOCX files immediately without selecting, uploading, or hosting a separate template file.</p>
-        </div>
-        <details class="advanced-template">
-          <summary>Advanced: use a different CSA template</summary>
-          <div class="template-picker">
-            <input type="file" id="templateFile" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-            <button class="btn small ghost" id="resetTemplateBtn" type="button">Return to embedded template</button>
-          </div>
-        </details>
-      </div>
-
+      <div id="analysisBox" class="analysis-box" aria-live="polite" hidden></div>
       <div class="actions">
-        <button class="btn primary" id="generateBtn" type="button">Generate current DOCX</button>
-        <button class="btn" id="addBatchBtn" type="button">Add / update batch</button>
-        <button class="btn ghost" id="clearBtn" type="button">Clear form</button>
+        <button class="btn primary" id="generateBtn" type="button">Download edited CSA</button>
+        <button class="btn" id="addBatchBtn" type="button">Save to multiple tickets</button>
+        <button class="btn ghost" id="clearBtn" type="button">Clear details</button>
       </div>
-      <div class="status" id="status" role="status" aria-live="polite"></div>
+      <div class="hidden-template-controls" hidden aria-hidden="true">
+        <input type="file" id="templateFile" accept=".docx" />
+        <span id="templateState"></span>
+        <button type="button" id="resetTemplateBtn">Reset</button>
+      </div>
+        </div>
+      </details>
     </section>
 
-    <section class="card preview-card">
-      <div class="section-head"><div><span class="step">3</span><h2>Plain-text preview</h2></div></div>
-      <pre id="preview">Fill or extract a ticket to preview it here.</pre>
-    </section>
-
-    <section class="card" id="batchCard">
+    <section class="card batch-card" id="batchCard" hidden>
       <div class="section-head batch-head">
-        <div><span class="step">4</span><h2>Batch queue</h2><span id="batchCount" class="count-pill"></span></div>
+        <div><span class="step">2</span><h2>Multiple CSA files</h2><span id="batchCount" class="count-pill"></span></div>
         <div class="head-actions">
           <button class="btn ghost small" id="clearBatchBtn" type="button">Clear batch</button>
-          <button class="btn primary" id="downloadBatchBtn" type="button" disabled>Download all as ZIP</button>
+          <button class="btn primary" id="downloadBatchBtn" type="button" disabled>Download all</button>
         </div>
       </div>
-      <div id="batchEmpty" class="empty">No tickets added yet. Paste several ticket blocks above and choose <strong>Extract all to batch</strong>.</div>
+      <div id="batchEmpty" class="empty">Paste more than one Zoho ticket to add them here.</div>
       <div class="batch-list" id="batchList"></div>
     </section>
-
-    <footer>
-      <strong>CSA rules built in:</strong> full physical address over region-only placeholders, current Philippine date for Created Date/Time, clean schedule extraction, numeric ticket filenames, Word bullet formatting in the DOCX task list, Unicode/special-character preservation, and blank Support Agent / Assigned Engineer values.
-    </footer>
-  </main>
+</main>
 
 
 
@@ -813,7 +825,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const ticket = String(item.ticket_number || "").replace(/\D/g, "");
       if (!ticket || seen.has(ticket)) continue;
       seen.add(ticket);
-      out.file(`${ticket}.docx`, await generateDocxBlob(templateBytes, item));
+      out.file(`#${ticket}.docx`, await generateDocxBlob(templateBytes, item));
     }
     return await out.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
   }
@@ -861,9 +873,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const root = $("analysisBox");
     root.innerHTML = "";
     root.classList.toggle("has-warning", result.warnings.length > 0);
-    const title = document.createElement("strong");
-    title.textContent = result.warnings.length ? "Extraction check — review needed" : "Extraction check — looks clean";
-    root.appendChild(title);
+    root.hidden = !result.warnings.length;
+    if (result.warnings.length) {
+      const title = document.createElement("strong");
+      title.textContent = "Please check these details:";
+      root.appendChild(title);
+    }
 
     if (result.warnings.length) {
       const ul = document.createElement("ul");
@@ -875,34 +890,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       root.appendChild(ul);
     }
 
-    if (result.notes.length) {
-      const note = document.createElement("p");
-      note.textContent = result.notes.join(" ");
-      root.appendChild(note);
-    }
   }
 
   function updatePreview() {
-    const d = getFormData();
-    const tasks = d.engineer_tasks.length ? d.engineer_tasks.join("\n") : "";
-    $("preview").textContent =
-`Company Name: ${d.company_name}
-Contact Name: ${d.contact_name}
-Mobile Number: ${d.mobile_number}
-Customer Visit Schedule Date: ${d.visit_schedule}
-Created Date/Time: ${d.created_date}
-Location Address: ${d.location_address}
-
-Ticket Information:
-
-Ticket Category: ${d.ticket_category}
-Issue Category: ${d.issue_category}
-Issue Description: ${d.issue_description}
-Serial Number: ${d.serial_number}
-
-Engineer Task/Activity:
-${tasks}`;
-    renderAnalysis(d);
+    renderAnalysis(getFormData());
   }
 
   function extractTicket() {
@@ -913,7 +904,8 @@ ${tasks}`;
       if (!data.ticket_number) return setStatus("No ticket number was detected. Review the pasted text or enter the ticket number manually.", "error");
       fillForm(data);
       const analysis = CSAParser.analyzeTicketData(data);
-      setStatus(analysis.warnings.length ? "Fields extracted. Please review the flagged items before generating." : "Fields extracted and checked. Review them, then generate the CSA.", analysis.warnings.length ? "" : "success");
+      $("editDetails").open = true;
+      setStatus(analysis.warnings.length ? "Some details need checking. Please review them below." : "Ticket details are ready to edit.", analysis.warnings.length ? "" : "success");
       $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
     } catch (err) {
       setStatus(err?.message || "Extraction failed.", "error");
@@ -939,7 +931,7 @@ ${tasks}`;
       renderBatch();
       fillForm(items[0]);
       const warningCount = items.reduce((sum, item) => sum + CSAParser.analyzeTicketData(item).warnings.length, 0);
-      setStatus(`${items.length} ticket${items.length === 1 ? "" : "s"} extracted and added to the batch queue${warningCount ? `; ${warningCount} review item${warningCount === 1 ? "" : "s"} flagged` : ""}.`, warningCount ? "" : "success");
+      setStatus(`${items.length} ticket${items.length === 1 ? "" : "s"} added.${warningCount ? " Please check any missing details before downloading." : ""}`, warningCount ? "" : "success");
       $("batchCard").scrollIntoView({behavior:"smooth", block:"start"});
     } catch (err) {
       console.error(err);
@@ -959,7 +951,7 @@ ${tasks}`;
   }
 
   async function getTemplateBytes() {
-    if (!window.CSADocx) throw new Error("CSA DOCX engine failed to initialize. Refresh the page (Ctrl+F5). No template upload is required.");
+    if (!window.CSADocx) throw new Error("CSA is unavailable right now. Please refresh the page.");
     const file = $("templateFile").files[0] || null;
     if (file) return await window.CSADocx.loadTemplateBytes(file);
     if (!bundledTemplateCache) bundledTemplateCache = await window.CSADocx.loadTemplateBytes(null);
@@ -970,7 +962,7 @@ ${tasks}`;
     const badge = $("templateState");
     try {
       await getTemplateBytes();
-      badge.textContent = "Embedded template ready";
+      badge.textContent = "Ready";
       badge.classList.add("ready");
       badge.classList.remove("failed");
     } catch (err) {
@@ -978,7 +970,7 @@ ${tasks}`;
       badge.textContent = "Built-in template unavailable";
       badge.classList.remove("ready");
       badge.classList.add("failed");
-      setStatus("The embedded CSA generator could not initialize. Refresh the page; no template upload is required.", "error");
+      setStatus("CSA is unavailable right now. Please refresh the page.", "error");
     }
   }
 
@@ -992,23 +984,48 @@ ${tasks}`;
     }
     const templateBytes = await getTemplateBytes();
     const blob = await window.CSADocx.generateDocxBlob(templateBytes, normalized);
-    triggerDownload(blob, `${ticket}.docx`);
+    triggerDownload(blob, `#${ticket}.docx`);
     return ticket;
   }
 
   async function generateDocx() {
     const data = getFormData();
     if (!data.ticket_number) return setStatus("Ticket number is required.", "error");
-    setStatus("Generating DOCX locally in your browser…");
+    setStatus("Preparing your CSA…");
     $("generateBtn").disabled = true;
     try {
       const ticket = await generateOne(data);
-      setStatus(`Generated ${ticket}.docx using the ${$("templateFile").files[0] ? "selected custom" : "built-in"} CSA template.`, "success");
+      setStatus(`CSA #${ticket} downloaded.`, "success");
     } catch (err) {
       console.error(err);
       setStatus(err?.message || "Could not generate the DOCX.", "error");
     } finally {
       $("generateBtn").disabled = false;
+    }
+  }
+
+  async function downloadFromPaste() {
+    const text = $("ticketText").value.trim();
+    if (!text) return setStatus("Paste the Zoho ticket first.", "error");
+    const button = $("quickCreateBtn");
+    button.disabled = true;
+    setStatus("Preparing your CSA…");
+    try {
+      const data = CSAParser.extractTicketData(text);
+      if (!data.ticket_number) throw new Error("Couldn't find the ticket number. Click Edit details first to add it.");
+      const problems = CSAParser.analyzeTicketData(data).warnings;
+      if (problems.some(x => /copied email\/UI text/i.test(x))) {
+        fillForm(data);
+        $("editDetails").open = true;
+        $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
+        throw new Error("Please check the visit date before downloading.");
+      }
+      const ticket = await generateOne(data);
+      setStatus(`CSA #${ticket} downloaded.${problems.length ? " Some information was missing; check the document before using it." : ""}`, "success");
+    } catch (err) {
+      setStatus(err?.message || "Couldn't create this CSA. Please check the ticket details.", "error");
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -1020,6 +1037,7 @@ ${tasks}`;
     const root = $("batchList");
     root.innerHTML = "";
     $("batchEmpty").style.display = batch.length ? "none" : "block";
+    $("batchCard").hidden = !batch.length;
     $("downloadBatchBtn").disabled = !batch.length;
     $("batchCount").textContent = batch.length ? `${batch.length} ticket${batch.length === 1 ? "" : "s"}` : "";
 
@@ -1030,11 +1048,11 @@ ${tasks}`;
       el.innerHTML = `<div class="batch-main">
           <div class="batch-ticket">#${escapeHtml(item.ticket_number)}</div>
           <div class="batch-company">${escapeHtml(item.company_name || "(No company name)")}</div>
-          <div class="batch-date">${escapeHtml(item.visit_schedule || "No schedule")}${analysis.warnings.length ? ` · ${analysis.warnings.length} review` : ""}</div>
+          <div class="batch-date">${escapeHtml(item.visit_schedule || "Schedule not set")}${analysis.warnings.length ? " · Check details" : ""}</div>
         </div>
         <div class="batch-actions">
           <button class="batch-action edit" type="button" data-i="${i}">Edit</button>
-          <button class="batch-action download" type="button" data-i="${i}">DOCX</button>
+          <button class="batch-action download" type="button" data-i="${i}">Download</button>
           <button class="remove" type="button" title="Remove" aria-label="Remove ticket ${escapeHtml(item.ticket_number)}" data-i="${i}">×</button>
         </div>`;
       root.appendChild(el);
@@ -1048,7 +1066,8 @@ ${tasks}`;
       const item = batch[Number(btn.dataset.i)];
       if (!item) return;
       fillForm(item);
-      setStatus(`Loaded ticket ${item.ticket_number} for review. Click Add / update batch after editing.`, "success");
+      $("editDetails").open = true;
+      setStatus(`Editing ticket #${item.ticket_number}. Save changes below when you're done.`, "success");
       $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
     }));
     root.querySelectorAll(".download").forEach(btn => btn.addEventListener("click", async () => {
@@ -1057,7 +1076,7 @@ ${tasks}`;
       btn.disabled = true;
       try {
         const ticket = await generateOne(item);
-        setStatus(`Generated ${ticket}.docx.`, "success");
+        setStatus(`CSA #${ticket} downloaded.`, "success");
       } catch (err) {
         console.error(err);
         setStatus(err?.message || "Could not generate the DOCX.", "error");
@@ -1072,12 +1091,12 @@ ${tasks}`;
     if (!data.ticket_number) return setStatus("Ticket number is required before adding to batch.", "error");
     addOrUpdateBatch(data);
     renderBatch();
-    setStatus(`Ticket ${data.ticket_number} added/updated in batch.`, "success");
+    setStatus(`Ticket #${data.ticket_number} saved to the list.`, "success");
   }
 
   async function downloadBatch() {
     if (!batch.length) return;
-    setStatus("Generating ZIP locally in your browser…");
+    setStatus("Preparing your CSA files…");
     $("downloadBatchBtn").disabled = true;
     try {
       const contaminated = batch.filter(item => CSAParser.analyzeTicketData(item).warnings.some(x => /copied email\/UI text/i.test(x)));
@@ -1086,7 +1105,7 @@ ${tasks}`;
       const normalized = batch.map(item => ({...item, visit_schedule: CSAParser.normalizeSchedule(item.visit_schedule || "")}));
       const blob = await window.CSADocx.generateBatchZip(templateBytes, normalized);
       triggerDownload(blob, "CSA_Batch.zip");
-      setStatus(`Generated ZIP with ${batch.length} CSA file${batch.length === 1 ? "" : "s"}.`, "success");
+      setStatus(`${batch.length} CSA file${batch.length === 1 ? "" : "s"} downloaded.`, "success");
     } catch (err) {
       console.error(err);
       setStatus(err?.message || "Could not generate the ZIP.", "error");
@@ -1105,7 +1124,7 @@ ${tasks}`;
   function clearBatch() {
     batch.splice(0, batch.length);
     renderBatch();
-    setStatus("Batch queue cleared.", "success");
+    setStatus("Ticket list cleared.", "success");
   }
 
   function resetTemplate() {
@@ -1126,6 +1145,7 @@ ${tasks}`;
     }
   } catch (_) {}
 
+  $("quickCreateBtn").addEventListener("click", downloadFromPaste);
   $("extractBtn").addEventListener("click", extractTicket);
   $("extractAllBtn").addEventListener("click", extractAllTickets);
   $("generateBtn").addEventListener("click", generateDocx);
@@ -1163,6 +1183,6 @@ ${tasks}`;
 
 })();
 
-  </script>
+</script>
 </body>
 </html>
