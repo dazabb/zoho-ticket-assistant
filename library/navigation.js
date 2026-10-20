@@ -4,16 +4,20 @@
   const tickets=document.getElementById('navTickets');
   const monde=document.getElementById('navMonde');
   const followup=document.getElementById('navFollowup');
+  const csa=document.getElementById('navCsa');
   const topTickets=document.getElementById('topSwitchTickets');
   const topMonde=document.getElementById('topSwitchMonde');
   const topFollowup=document.getElementById('topSwitchFollowup');
+  const topCsa=document.getElementById('topSwitchCsa');
   const newWorkspace=document.getElementById('sidebarNewWorkspaceBtn');
   const main=document.getElementById('mainArea');
   const reporting=document.getElementById('reportingPane');
   const followupPane=document.getElementById('followupPane');
+  const csaPane=document.getElementById('csaPane');
   const status=document.getElementById('statusBar');
+
   function syncViewButtons(view){
-    [[tickets,topTickets,'tickets'],[monde,topMonde,'monde'],[followup,topFollowup,'followup']].forEach(([a,b,target])=>{
+    [[tickets,topTickets,'tickets'],[monde,topMonde,'monde'],[followup,topFollowup,'followup'],[csa,topCsa,'csa']].forEach(([a,b,target])=>{
       for(const el of [a,b]){
         if(!el)continue;
         const active=view===target;
@@ -23,25 +27,48 @@
       }
     });
   }
+
   function activate(view){
     main.hidden=view!=='tickets';
     reporting.hidden=view!=='monde';
     followupPane.hidden=view!=='followup';
+    csaPane.hidden=view!=='csa';
     status.hidden=view!=='tickets';
     syncViewButtons(view);
-    document.getElementById('toolbarTitle').textContent=({tickets:'Ticket Workspace',monde:'Monde Nissin Report',followup:'Viber Follow-up'})[view];
-    document.getElementById('toolbarSubtitle').textContent=({tickets:'Chat',monde:'Daily Zerto monitoring report',followup:'Zoho ticket status updates from CSV'})[view];
+
+    document.getElementById('toolbarTitle').textContent=({
+      tickets:'Ticket Workspace',
+      monde:'Monde Nissin Report',
+      followup:'Viber Follow-up',
+      csa:'CSA Generator'
+    })[view];
+    document.getElementById('toolbarSubtitle').textContent=({
+      tickets:'Chat',
+      monde:'Daily Zerto monitoring report',
+      followup:'Zoho ticket status updates from CSV',
+      csa:'Managed Services document generation'
+    })[view];
+
     if(view==='tickets'&&window.editor&&typeof window.editor.resize==='function')requestAnimationFrame(()=>window.editor.resize());
-    const newHash=({tickets:'#tickets',monde:'#reporting/monde',followup:'#reporting/viber-followup'})[view];
+    const newHash=({
+      tickets:'#tickets',
+      monde:'#reporting/monde',
+      followup:'#reporting/viber-followup',
+      csa:'#managed-services/csa-generator'
+    })[view];
     if(window.location.hash!==newHash)history.replaceState(null,'',newHash);
-    if(view==='followup')syncThemePreferenceButton();
+    if(view==='followup'||view==='csa')syncThemePreferenceButton();
   }
-  tickets.addEventListener('click',()=>activate('tickets'));
-  monde.addEventListener('click',()=>activate('monde'));
-  followup.addEventListener('click',()=>activate('followup'));
-  if(topTickets)topTickets.addEventListener('click',()=>activate('tickets'));
-  if(topMonde)topMonde.addEventListener('click',()=>activate('monde'));
-  if(topFollowup)topFollowup.addEventListener('click',()=>activate('followup'));
+
+  tickets?.addEventListener('click',()=>activate('tickets'));
+  monde?.addEventListener('click',()=>activate('monde'));
+  followup?.addEventListener('click',()=>activate('followup'));
+  csa?.addEventListener('click',()=>activate('csa'));
+  topTickets?.addEventListener('click',()=>activate('tickets'));
+  topMonde?.addEventListener('click',()=>activate('monde'));
+  topFollowup?.addEventListener('click',()=>activate('followup'));
+  topCsa?.addEventListener('click',()=>activate('csa'));
+
   if(newWorkspace)newWorkspace.addEventListener('click',()=>{
     activate('tickets');
     const createSession=document.getElementById('newChatSessionBtn');
@@ -68,7 +95,7 @@
     }
     if(themeLabel)themeLabel.textContent=isDark?'Light mode':'Dark mode';
     if(themeIcon)themeIcon.textContent=isDark?'☀':'☾';
-    ['mondeFrame','followupFrame'].forEach(id=>{
+    ['mondeFrame','followupFrame','csaFrame'].forEach(id=>{
       const frame=document.getElementById(id);
       if(frame && frame.contentWindow){
         frame.contentWindow.postMessage({type:'MAU_APPEARANCE',dark:isDark},'*');
@@ -78,13 +105,17 @@
   if(themeButton)themeButton.addEventListener('click',()=>{
     if(typeof window.toggleTheme==='function') window.toggleTheme();
   });
+
   function sendMondeProfile(){
     const frame=document.getElementById('mondeFrame');
     if(frame?.contentWindow)frame.contentWindow.postMessage({type:'MAU_PROFILE',profileId:window.MAUActiveProfileId||'guest'},'*');
   }
-  for(const id of ['mondeFrame','followupFrame']){
+  for(const id of ['mondeFrame','followupFrame','csaFrame']){
     const frame=document.getElementById(id);
-    if(frame)frame.addEventListener('load',()=>{window.syncThemePreferenceButton();if(id==='mondeFrame')sendMondeProfile();});
+    if(frame)frame.addEventListener('load',()=>{
+      window.syncThemePreferenceButton();
+      if(id==='mondeFrame')sendMondeProfile();
+    });
   }
   window.addEventListener('mau:profilechange',sendMondeProfile);
   window.syncThemePreferenceButton();
@@ -96,5 +127,7 @@
     if (chat && getComputedStyle(chat).display==='none' && typeof window.toggleDisplayChatBotContainer==='function') window.toggleDisplayChatBotContainer();
     const input=document.getElementById('chat-input');if(input) input.focus();
   });
-  activate(location.hash.includes('reporting/viber-followup')?'followup':location.hash.includes('reporting/monde')?'monde':'tickets');
+
+  const hash=location.hash;
+  activate(hash.includes('managed-services/csa-generator')?'csa':hash.includes('reporting/viber-followup')?'followup':hash.includes('reporting/monde')?'monde':'tickets');
 })();

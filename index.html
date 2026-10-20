@@ -86,6 +86,8 @@
       <div class="side-section">Reporting</div>
       <button type="button" class="side-link" id="navMonde"><span class="side-icon">◉</span><span class="side-label">Monde Nissin</span></button>
       <button type="button" class="side-link" id="navFollowup"><span class="side-icon">☷</span><span class="side-label">Viber Follow-up</span></button>
+      <div class="side-section">Manage Services</div>
+      <button type="button" class="side-link" id="navCsa"><span class="side-icon">▤</span><span class="side-label">CSA Generator</span></button>
       
       <button type="button" class="side-user-card" id="sidebarSwitchProfileBtn" title="Switch profile"><div class="side-user-avatar" id="sidebarProfileAvatar">M</div><div><strong id="sidebarProfileName">Select profile</strong><small>Switch profile</small></div></button>
     </aside>
@@ -95,6 +97,7 @@
         <button type="button" class="toolbar-view-pill active" id="topSwitchTickets" aria-selected="true">Workspace</button>
         <button type="button" class="toolbar-view-pill" id="topSwitchMonde" aria-selected="false">Monde Report</button>
         <button type="button" class="toolbar-view-pill" id="topSwitchFollowup" aria-selected="false">Viber Follow-up</button>
+        <button type="button" class="toolbar-view-pill" id="topSwitchCsa" aria-selected="false">CSA Generator</button>
       </div>
       <div class="toolbar-actions">
         <button type="button" class="theme-toggle" id="themePreferenceButton" aria-label="Switch to dark mode" title="Switch appearance"><span id="themePreferenceIcon">☾</span><span id="themePreferenceText">Dark mode</span></button>
@@ -181,6 +184,9 @@
     </section>
     <section id="followupPane" aria-label="Viber follow-up reporting" hidden>
       <iframe id="followupFrame" src="reporting/followup.html" title="Viber ticket follow-up report generator" loading="lazy"></iframe>
+    </section>
+    <section id="csaPane" aria-label="Managed Services CSA Generator" hidden>
+      <iframe id="csaFrame" src="managed-services/csa-generator/index.html" title="CSA document generator" loading="lazy"></iframe>
     </section>
     <div id="statusBar" class="statusbardesign"></div>
   </div>
