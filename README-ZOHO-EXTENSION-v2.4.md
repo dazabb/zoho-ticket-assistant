@@ -4,7 +4,7 @@
 
 If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or disable it first to avoid duplicate autofill actions.
 
-1. Extract `MAU-Zoho-Extension-v1.1.zip` to a folder (MAU-Zoho-Extension).
+1. Extract `MAU-Zoho-Extension-v1.2.zip` to a folder (MAU-Zoho-Extension).
 2. Open **chrome://extensions/** in the Chrome address bar.
 3. Turn on **Developer mode** (upper-right corner).
 4. Click **Load unpacked** and select the extracted **MAU-Zoho-Extension** folder.

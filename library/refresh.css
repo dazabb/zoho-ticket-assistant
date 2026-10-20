@@ -461,3 +461,24 @@ body.theme-dark .zoho-extension-x,body.theme-dark .zoho-extension-dialog-actions
 body.theme-dark .zoho-extension-steps a,body.theme-dark .zoho-copy-link{color:#a4bfff}
 body.theme-dark .zoho-extension-help{color:#aab6c8}
 @media(max-width:600px){.zoho-extension-dialog{padding:18px}.zoho-extension-steps{font-size:13px}.zoho-setup-button{font-size:12px;padding:7px 9px}}
+
+/* v2.7 — Choose new ticket or open Zoho Edit Ticket, never silently change existing tickets */
+.zoho-destination-overlay{position:fixed;inset:0;z-index:12000;background:rgba(16,24,39,.58);display:grid;place-items:center;padding:20px}
+.zoho-destination-dialog{width:min(600px,100%);max-height:90vh;overflow:auto;background:var(--mau-surface);color:var(--mau-text);border:1px solid var(--mau-border);border-radius:18px;box-shadow:0 20px 65px #0003;padding:23px;display:flex;flex-direction:column;gap:13px}
+.zoho-destination-dialog h2{margin:0;font-size:19px;line-height:1.35}
+.zoho-destination-dialog p{margin:0;line-height:1.5;font-size:13px;color:var(--mau-secondary-text)}
+.zoho-destination-source{font-weight:650;color:var(--mau-text)!important;background:var(--mau-secondary);border-radius:9px;padding:9px 12px}
+.zoho-destination-choices{display:grid;gap:8px;max-height:38vh;overflow-y:auto}
+.zoho-destination-choice{display:flex;align-items:flex-start;gap:11px;border:1px solid var(--mau-border);border-radius:12px;padding:12px;background:var(--mau-surface);cursor:pointer}
+.zoho-destination-choice:hover,.zoho-destination-choice:has(input:checked){background:var(--mau-selected);border-color:var(--mau-blue)}
+.zoho-destination-choice input{margin-top:4px;flex:0 0 auto;accent-color:var(--mau-blue)}
+.zoho-destination-choice span{display:grid;gap:4px;min-width:0}
+.zoho-destination-choice strong{font-size:13px}
+.zoho-destination-choice small{font-size:12px;color:var(--mau-secondary-text);overflow-wrap:anywhere}
+.zoho-destination-check{display:flex;gap:8px;align-items:flex-start;font-size:12px;line-height:1.5}
+.zoho-destination-check input{accent-color:var(--mau-blue);margin-top:3px;flex:0 0 auto}
+.zoho-destination-warning{font-size:12px!important}
+.zoho-destination-buttons{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.zoho-destination-buttons button{border:1px solid var(--mau-border);border-radius:9px;padding:10px 14px;background:var(--mau-secondary);color:var(--mau-text);font-weight:650;cursor:pointer}
+.zoho-destination-buttons .zoho-destination-primary{background:var(--mau-blue);color:#fff;border-color:var(--mau-blue)}
+.zoho-destination-buttons button:disabled{opacity:.45;cursor:not-allowed}

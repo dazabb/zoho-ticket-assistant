@@ -422,8 +422,8 @@ Backup incident mapping rules:
 - Do not suggest or include retrigger failed backup as a default action phrase for backup incidents.
 
 Global subcategory bans:
-- Never use Issue Subcategory: Monitoring in the final workspace output.
-- Never use Issue Subcategory: Retrigger failed backup in the final workspace output.
+- Use Issue Subcategory: Monitoring ONLY when offered by that exact Zoho Issue Category and supported by the ticket.
+- Use Issue Subcategory: Retrigger failed backup when allowed by the actual selected Zoho Issue Category and evidence calls for it.
 - For planned maintenance, maintenance windows, power drain activity, and other scheduled technical work, use Status / Health Report instead of Monitoring.
 - For backup failure-style tickets that would otherwise use Retrigger failed backup, use Reliability Issue instead.
 
@@ -953,7 +953,10 @@ Severity answer structure:
 
   function parseTicketReply(rawText) {
     const raw = repairText(rawText).trim();
-    const body = raw.replace(/^```(?:text)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    let body = raw.replace(/^```(?:text)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
+    // Older saved replies may predate the current Zoho subcategory options.
+    if (window.MAUBackupSubcategories) body = window.MAUBackupSubcategories.correctTicketText(body, body).text;
+    if (window.MAUZohoMap) body = window.MAUZohoMap.correctTicketText(body, body).text;
     if (!/^(?:Customer Company Name|Account Name|Subject):/m.test(body)) return null;
     const lines = body.split("\n");
     const fields = [];
@@ -2741,7 +2744,9 @@ Severity answer structure:
     const sections = [
       mode === "qa" ? ZOHO_QA_PROMPT : ZOHO_GENERATOR_PROMPT,
       "Important current SANDZ classification and support policy:\n" + sandzGuidance,
-      window.MAURequestSafety?.POLICY || '', 
+      window.MAURequestSafety?.POLICY || '',
+      window.MAUBackupSubcategories?.POLICY || '',
+      window.MAUZohoMap?.POLICY || '',
       modeInstruction,
       freshAccountContext ? "Fresh account context: The latest user request is authoritative for this run. Ignore older visible ticket examples or screenshots from other accounts unless the user explicitly references them in the current message." : "",
       accountClassificationOverride,
@@ -3028,6 +3033,18 @@ Severity answer structure:
         const validated = window.MAURequestSafety.fixTicketText(normalizedReply, combinedInput);
         normalizedReply = validated.text;
         classificationCorrections.push(...validated.changes.map(field=>'Validated '+field));
+      }
+      // Final validation against actual Backup - Incident dropdown options.
+      // This must run AFTER request and account classification corrections.
+      if (mode === 'standard' && window.MAUBackupSubcategories) {
+        const checked = window.MAUBackupSubcategories.correctTicketText(normalizedReply, combinedInput);
+        normalizedReply = checked.text;
+        if (checked.changed) classificationCorrections.push('Validated Issue Subcategory');
+      }
+      if (mode === 'standard' && window.MAUZohoMap) {
+        const mapped=window.MAUZohoMap.correctTicketText(normalizedReply,combinedInput);
+        normalizedReply=mapped.text;
+        if (mapped.changed) classificationCorrections.push('Validated Zoho dropdown mapping');
       }
       // Never let a reply intended for one customer contain another customer's
       // ticket subject. Stop it before chat display, copying, or autofill.

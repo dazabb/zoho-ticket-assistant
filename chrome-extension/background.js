@@ -3,15 +3,21 @@
 
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
+  const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
+  const EDIT_PATH_RE = /^\/agent\/amtiphilippines\/sandz\/tickets\/edit\/(\d+)\/?$/i;
   const STORAGE_KEY_TAB_ID = "ztaZohoTabId";
   const DEFAULT_ZOHO_NEW_TICKET_URL = "https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new";
 
   const pendingPayloadByTabId = new Map();
   const targetUrlByTabId = new Map();
   const PENDING_PREFIX = "mauPendingZohoTab:";
+  const PENDING_TARGET_PREFIX = "mauPendingZohoUrl:";
   async function storePending(tabId, payload) {
     pendingPayloadByTabId.set(tabId, payload);
-    await chrome.storage.session.set({ [PENDING_PREFIX + tabId]: payload });
+    await chrome.storage.session.set({
+      [PENDING_PREFIX + tabId]: payload,
+      [PENDING_TARGET_PREFIX + tabId]: targetUrlByTabId.get(tabId) || DEFAULT_ZOHO_NEW_TICKET_URL
+    });
   }
   async function readPending(tabId) {
     if (pendingPayloadByTabId.has(tabId)) return pendingPayloadByTabId.get(tabId);
@@ -20,7 +26,7 @@
   }
   async function clearPending(tabId) {
     pendingPayloadByTabId.delete(tabId);
-    await chrome.storage.session.remove(PENDING_PREFIX + tabId);
+    await chrome.storage.session.remove([PENDING_PREFIX + tabId, PENDING_TARGET_PREFIX + tabId]);
   }
 
   function stripHash(url) {
@@ -28,6 +34,9 @@
   }
 
   function urlsMatch(actualUrl, expectedUrl) {
+    const actualEdit = parseEditUrl(actualUrl);
+    const expectedEdit = parseEditUrl(expectedUrl);
+    if (actualEdit || expectedEdit) return !!actualEdit && !!expectedEdit && actualEdit.url === expectedEdit.url;
     const actual = stripHash(actualUrl);
     const expected = stripHash(expectedUrl || DEFAULT_ZOHO_NEW_TICKET_URL);
     return actual === expected;
@@ -88,6 +97,65 @@
       targetUrlByTabId.set(matchedTab.id, targetUrl);
     }
     return matchedTab;
+  }
+
+  function parseEditUrl(urlText) {
+    try {
+      const url = new URL(String(urlText || ""));
+      if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "helpcenter.amti.com.ph") return null;
+      const match = url.pathname.match(EDIT_PATH_RE);
+      return match ? { ticketId: match[1], url: url.origin + url.pathname } : null;
+    } catch (_) { return null; }
+  }
+
+  async function listOpenEditTabs() {
+    const candidates = await chrome.tabs.query({ url: "https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/edit/*" });
+    return candidates.filter(tab => tab && tab.id && !tab.discarded && parseEditUrl(tab.url))
+      .map(tab => ({ tabId: tab.id, ticketId: parseEditUrl(tab.url).ticketId,
+        title: String(tab.title || "Zoho Edit Ticket").slice(0, 150),
+        url: parseEditUrl(tab.url).url, active: !!tab.active }))
+      .sort((a,b) => Number(b.active) - Number(a.active)).slice(0, 30);
+  }
+
+  async function handleExistingEdit(message) {
+    const tabId = Number(message.editTabId || 0);
+    const ticketId = String(message.editTicketId || "");
+    if (!Number.isSafeInteger(tabId) || tabId < 1 || !/^\d+$/.test(ticketId) || message.confirmedEdit !== true) {
+      throw new Error("Select and confirm an existing Zoho Edit Ticket tab first.");
+    }
+    const tab = await getTabById(tabId);
+    const parsed = parseEditUrl(tab && tab.url);
+    if (!parsed || parsed.ticketId !== ticketId) {
+      throw new Error("The selected Zoho edit tab changed or was closed. Check tabs and choose again.");
+    }
+    const payload = { ...message.payload, __mauEdit: {
+      mode: "edit", ticketId,
+      replaceIdentity: message.replaceIdentity === true
+    } };
+    targetUrlByTabId.set(tabId, parsed.url);
+    await setStoredTabId(tabId);
+    await focusTab(tab);
+    const delivered = await sendAutofill(tabId, payload);
+    if (!delivered) {
+      await storePending(tabId, payload);
+      // Keep the queue only for this exact edit URL. Never navigate to an unrelated ticket.
+      const tabNow = await getTabById(tabId);
+      if (!tabNow || !urlsMatch(tabNow.url, parsed.url)) {
+        await clearPending(tabId);
+        throw new Error("The edit ticket changed before autofill. No data was sent.");
+      }
+      setTimeout(async () => {
+        try {
+          const stillPending = await readPending(tabId);
+          const currentTab = await getTabById(tabId);
+          if (stillPending && currentTab && urlsMatch(currentTab.url, parsed.url) &&
+              await sendAutofill(tabId, stillPending)) await clearPending(tabId);
+        } catch (_) {}
+      }, 1500);
+    } else {
+      await clearPending(tabId);
+    }
+    return { ok:true, mode:"edit", tabId, ticketId, queued: !delivered };
   }
 
   async function sendAutofill(tabId, payload) {
@@ -186,13 +254,26 @@
       sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
       return undefined;
     }
+    if (message.type === ACTION_LIST_EDIT) {
+      listOpenEditTabs().then(tabs => sendResponse({ok:true, tabs}))
+        .catch(error => sendResponse({ok:false, error:String(error?.message || error)}));
+      return true;
+    }
     if (message.type !== ACTION_PREPARE_OR_FOCUS) return undefined;
+    if (message.mode === "edit") {
+      if (!message.payload || !message.payload.fields || typeof message.payload.fields !== "object") {
+        sendResponse({ok:false, error:"Invalid ticket details"}); return undefined;
+      }
+      handleExistingEdit(message).then(sendResponse)
+        .catch(error => sendResponse({ok:false, error:String(error?.message || error)}));
+      return true;
+    }
     const targetUrl = safeTargetUrl(message.targetUrl);
     if (!targetUrl || !message.payload || !message.payload.fields || typeof message.payload.fields !== 'object') {
       sendResponse({ ok:false, error:"Invalid ticket or Zoho address" });
       return undefined;
     }
-    handlePrepareOrFocus({ targetUrl, payload: message.payload })
+    handlePrepareOrFocus({ targetUrl, payload: { ...message.payload, __mauEdit: { mode:"new" } } })
       .then((response) => sendResponse(response))
       .catch((error) => {
         sendResponse({
@@ -208,8 +289,13 @@
     const payload = await readPending(tabId);
     if (!payload) return;
 
-    const expectedUrl = targetUrlByTabId.get(tabId) || DEFAULT_ZOHO_NEW_TICKET_URL;
-    if (!urlsMatch(tab && tab.url, expectedUrl)) return;
+    const storedTarget = await chrome.storage.session.get(PENDING_TARGET_PREFIX + tabId);
+    const expectedUrl = targetUrlByTabId.get(tabId) || storedTarget[PENDING_TARGET_PREFIX + tabId] || DEFAULT_ZOHO_NEW_TICKET_URL;
+    if (!urlsMatch(tab && tab.url, expectedUrl)) {
+      // A queued edit payload must never follow a tab to a different ticket.
+      await clearPending(tabId);
+      return;
+    }
 
     const delivered = await sendAutofill(tabId, payload);
     if (delivered) {

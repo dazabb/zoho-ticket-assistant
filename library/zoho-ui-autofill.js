@@ -7,6 +7,7 @@
   const BRIDGE_REQUEST_TYPE = "zta:bridge-request";
   const BRIDGE_RESPONSE_TYPE = "zta:bridge-response";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
+  const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
 
   const LABEL_PATTERNS = [
     ["customerCompanyName", /^\s*Customer\s+Company\s+Name\s*:\s*(.*)$/i],
@@ -270,7 +271,22 @@
   }
 
   function getRuleSet(ticketCategory) {
-    return ISSUE_RULES[getTicketMode(ticketCategory)];
+    const mode=getTicketMode(ticketCategory);
+    const old=ISSUE_RULES[mode];
+    const mapping=window.MAUZohoMap?.CATEGORIES?.[mode==='request'?'Request':'Incident'];
+    if(!mapping) return old;
+    const fixed={};
+    for(const [family,rule] of Object.entries(old)) {
+      const category=window.MAUZohoMap.issueCategory(mode,rule.category);
+      if(category) fixed[family]={...rule,category,subcategories:mapping[category]};
+    }
+    // Categories not in older AI mapping (DR - Incident, DR - Request, etc.) stay addressable.
+    for(const [category,subcategories] of Object.entries(mapping)){
+      if(Object.values(fixed).some(rule=>rule.category===category))continue;
+      const key=category.startsWith('DR -')?'dr-special':category.toLowerCase().replace(/[^a-z]+/g,'-');
+      fixed[key]={category,keywords:[],subcategories};
+    }
+    return fixed;
   }
 
   function getAllValidCategories() {
@@ -307,6 +323,9 @@
   }
 
   function resolveValidIssueCategory(fields, description, ticketCategory, workspaceText, options) {
+    // Confirmed exact Zoho choice beats keyword heuristics from the same field.
+    const explicitlyValid=window.MAUZohoMap?.issueCategory(ticketCategory,fields.issueCategory);
+    if(explicitlyValid)return explicitlyValid;
     if (options && options.iaasHealthCheck) return INFRASTRUCTURE_REQUEST_LABEL;
     if (options && options.backupConnectivityIncident) return "Network - Incident";
     if (options && options.restoreRequest) return "Backup - Request";
@@ -322,15 +341,21 @@
 
     const rawIssueCategory = normalizeWhitespace(fields.issueCategory);
     const rules = getRuleSet(ticketCategory);
-    const validCategories = getAllValidCategories();
+    const validCategories = new Set(Object.values(rules).map(r=>r.category));
     if (validCategories.has(rawIssueCategory)) return rawIssueCategory;
+    if (window.MAUZohoMap) {
+      const valid=window.MAUZohoMap.issueCategory(ticketCategory,rawIssueCategory);
+      if(valid)return valid;
+      // A category valid for the OPPOSITE ticket type is a mismatch, not a cue to invent another family.
+      if(rawIssueCategory && window.MAUZohoMap.issueCategory(getTicketMode(ticketCategory)==='request'?'Incident':'Request',rawIssueCategory))return '';
+    }
     if (normalizeForMatch(rawIssueCategory) === normalizeForMatch("Infrastructure")) return INFRASTRUCTURE_REQUEST_LABEL;
 
     const context = buildIssueContext(fields, description, workspaceText);
     const family = findFamilyByCategory(rawIssueCategory, ticketCategory) || inferFamilyFromContext(context, ticketCategory);
     if (family && rules[family]) return rules[family].category;
 
-    return getTicketMode(ticketCategory) === "request" ? "Server - Request" : "Server - Incident";
+    return ""; // Never guess a Server family when current ticket evidence does not establish one.
   }
 
   function chooseDefaultSubcategory(rule, context, ticketCategory) {
@@ -352,7 +377,7 @@
       if (includesAny(context, ["backup policy", "policies", "policy"]) && subcategories.includes("Check backup policies and status")) {
         return "Check backup policies and status";
       }
-      return subcategories[0];
+      return ""; // Valid dropdown entry does not make it a valid diagnosis.
     }
 
     if (includesAny(context, ["capacity", "nearly full"]) && subcategories.includes("Capacity Issue")) return "Capacity Issue";
@@ -364,10 +389,22 @@
     if (includesAny(context, ["device"]) && subcategories.includes("Device Issue")) return "Device Issue";
     if (includesAny(context, ["failure", "fail", "error"]) && subcategories.includes("Reliability Issue")) return "Reliability Issue";
     if (includesAny(context, ["performance", "slow"]) && subcategories.includes("Performance Issue")) return "Performance Issue";
-    return subcategories[0];
+    return ""; // No evidence; leave subcategory for review.
   }
 
   function resolveValidIssueSubCategory(fields, description, ticketCategory, workspaceText, resolvedIssueCategory, options) {
+    if (window.MAUBackupSubcategories && window.MAUBackupSubcategories.isBackupIncident(resolvedIssueCategory, ticketCategory)) {
+      const focusedEvidence = [fields.subject, description, fields.issueDescription].filter(Boolean).join(' ');
+      return window.MAUBackupSubcategories.choose({
+        value: fields.issueSubCategory,
+        issueCategory: resolvedIssueCategory,
+        ticketCategory,
+        evidence: focusedEvidence || workspaceText
+      }).value;
+    }
+    // A valid explicit subcategory must not be silently rewritten based on the label itself.
+    const explicitlyValid=window.MAUZohoMap?.subcategory(ticketCategory,resolvedIssueCategory,fields.issueSubCategory);
+    if(explicitlyValid)return explicitlyValid;
     if (options && options.iaasHealthCheck) return "Check IAAS Health and Metrics";
     if (options && options.backupConnectivityIncident) return "Network Connection";
     if (options && options.restoreRequest) return "Restoration";
@@ -738,6 +775,8 @@
     const issue = String(issueCategory || "").trim();
     const ticket = String(ticketCategory || "").trim();
     if (!issue) return "";
+    const exact=window.MAUZohoMap?.issueCategory(ticket,issue);
+    if(exact)return exact;
     if (getAllValidCategories().has(issue)) return issue;
     if (!ticket) return issue;
     if (issue.toLowerCase().includes(ticket.toLowerCase())) return issue;
@@ -747,16 +786,8 @@
   function normalizeForbiddenIssueSubCategory(issueSubCategory, fields, description, ticketCategory, workspaceText) {
     const raw = normalizeWhitespace(issueSubCategory);
     if (!raw) return "";
-    if (normalizeForMatch(raw) === normalizeForMatch("Retrigger failed backup")) {
-      return "Reliability Issue";
-    }
-    if (
-      normalizeForMatch(raw) === normalizeForMatch("Monitoring")
-      && isScheduledMaintenance(fields, workspaceText, description)
-      && String(ticketCategory || "").trim().toLowerCase() === "request"
-    ) {
-      return "Status / Health Report";
-    }
+
+
     return raw;
   }
 
@@ -887,6 +918,7 @@
     const scheduledMaintenance = isScheduledMaintenance(fields, workspaceText, description);
     const siDeliveryActivity = isSiDeliveryActivity(fields, workspaceText, description);
     const resolvedSolutions = firstNonEmpty(
+      window.MAUZohoMap?.solution(fields.solutions) || "",
       iaasHealthCheck ? "MS" : "",
       isBackupConnectivityIncident(fields, workspaceText, description, normalizeWhitespace(fields.ticketCategory) || "Incident") ? "MS" : "",
       siDeliveryActivity ? "SI" : "",
@@ -896,6 +928,7 @@
     const siMigrationFamily = getSiMigrationRequestFamily(fields, workspaceText, description, resolvedSolutions);
     const siStorageHealthCheck = isSiStorageHealthCheck(fields, workspaceText, description, resolvedSolutions);
     const ticketCategory = firstNonEmpty(
+      window.MAUZohoMap?.mode(fields.ticketCategory) || "",
       iaasHealthCheck ? "Request" : "",
       restoreRequest ? "Request" : "",
       siMigrationFamily ? "Request" : "",
@@ -954,6 +987,7 @@
         "Ticket Category": ticketCategory,
         "Issue Category": formatIssueCategory(normalizedIssueCategory, ticketCategory),
         "Issue Sub-Category": issueSubCategory,
+        "Technology/Platform": fields.technologyPlatform || "",
         "Severity Level": severityLevel,
         "Support Level": normalizeSupportLevel(fields.supportLevel),
         "Support Agent": firstNonEmpty(normalizeSupportAgent(fields.supportAgent), profileSupportAgent),
@@ -967,6 +1001,8 @@
       window.MAUSandzTicketRules.correctZohoPayload(result, workspaceText);
     }
     if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(result, workspaceText);
+    if (window.MAUBackupSubcategories) window.MAUBackupSubcategories.correctPayload(result, workspaceText);
+    if (window.MAUZohoMap) window.MAUZohoMap.correctPayload(result, workspaceText);
     return result;
   }
 
@@ -1011,7 +1047,7 @@
       const timeoutId = window.setTimeout(() => {
         window.removeEventListener("message", onMessage);
         reject(new Error("Extension bridge timeout"));
-      }, 1500);
+      }, 5000);
 
       function onMessage(event) {
         const message = event && event.data;
@@ -1038,6 +1074,100 @@
     });
   }
 
+  // Edit tabs are never selected automatically: a different customer's ticket may be open.
+  function chooseTicketDestination(openEditTabs, payload) {
+    return new Promise(resolve => {
+      if (!openEditTabs.length) { resolve({mode:"new"}); return; }
+      const overlay = document.createElement("div");
+      overlay.className = "zoho-destination-overlay";
+      overlay.setAttribute("role", "presentation");
+      const dialog = document.createElement("section");
+      dialog.className = "zoho-destination-dialog";
+      dialog.setAttribute("role", "dialog");
+      dialog.setAttribute("aria-modal", "true");
+      dialog.setAttribute("aria-label", "Choose Zoho ticket destination");
+      const title = document.createElement("h2");
+      title.textContent = "Where should MAU fill the ticket?";
+      const description = document.createElement("p");
+      description.textContent = `Found ${openEditTabs.length} open Zoho Edit Ticket tab(s). Choose an existing ticket only after confirming its customer and ticket ID.`;
+      const from = document.createElement("p");
+      from.className = "zoho-destination-source";
+      from.textContent = "MAU draft: " + String(payload.fields?.["Account Name"] || payload.fields?.["Customer Company Name"] || "Customer not identified");
+      const choices = document.createElement("div");
+      choices.className = "zoho-destination-choices";
+      const addChoice = (value, heading, subtitle, selected) => {
+        const label = document.createElement("label");
+        label.className = "zoho-destination-choice";
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = "mau-zoho-destination";
+        radio.value = value;
+        radio.checked = !!selected;
+        label.append(radio);
+        const text = document.createElement("span");
+        const name = document.createElement("strong");
+        name.textContent = heading;
+        const more = document.createElement("small");
+        more.textContent = subtitle;
+        text.append(name,more);
+        label.append(text);
+        choices.append(label);
+        return radio;
+      };
+      addChoice("new", "Create a new Zoho ticket", "Recommended unless you intend to update an existing ticket", true);
+      openEditTabs.forEach((tab, index) => addChoice(`edit:${index}`, `Edit existing ticket (ID ${tab.ticketId})`, tab.title));
+      const verifyLabel = document.createElement("label");
+      verifyLabel.className = "zoho-destination-check";
+      const verify = document.createElement("input");
+      verify.type = "checkbox";
+      verifyLabel.append(verify, document.createTextNode(" I verified the selected ticket ID and customer. I want to update this existing ticket."));
+      const replaceLabel = document.createElement("label");
+      replaceLabel.className = "zoho-destination-check";
+      const replace = document.createElement("input");
+      replace.type = "checkbox";
+      replaceLabel.append(replace, document.createTextNode(" Also replace the existing subject, description and company name"));
+      const note = document.createElement("p");
+      note.className = "zoho-destination-warning";
+      note.textContent = "Edit mode preserves subject, description, ticket status, channel, ownership and serial number unless you explicitly choose otherwise. MAU never clicks Save or Submit.";
+      const buttons = document.createElement("div");
+      buttons.className = "zoho-destination-buttons";
+      const cancel = document.createElement("button");
+      cancel.type = "button"; cancel.textContent = "Cancel";
+      const confirm = document.createElement("button");
+      confirm.type = "button"; confirm.className = "zoho-destination-primary";
+      const update = () => {
+        const current = choices.querySelector('input[name="mau-zoho-destination"]:checked')?.value || "new";
+        const editing = current !== "new";
+        verifyLabel.hidden = !editing;
+        replaceLabel.hidden = !editing;
+        note.hidden = !editing;
+        confirm.disabled = editing && !verify.checked;
+        confirm.textContent = editing ? "Fill selected Edit Ticket" : "Open new ticket";
+      };
+      const finish = value => { document.removeEventListener("keydown", escape); overlay.remove(); resolve(value); };
+      const escape = event => { if (event.key === "Escape") { event.preventDefault(); finish(null); } };
+      document.addEventListener("keydown", escape);
+      choices.addEventListener("change", () => { verify.checked = false; replace.checked = false; update(); });
+      verify.addEventListener("change", update);
+      cancel.addEventListener("click", () => finish(null));
+      confirm.addEventListener("click", () => {
+        const selected = choices.querySelector('input[name="mau-zoho-destination"]:checked')?.value || "new";
+        if (selected === "new") { finish({mode:"new"}); return; }
+        if (!verify.checked) return;
+        const index = Number(selected.split(":")[1]);
+        const tab = openEditTabs[index];
+        if (!tab) { finish(null); return; }
+        finish({mode:"edit",editTabId:tab.tabId,editTicketId:tab.ticketId,confirmedEdit:true,replaceIdentity:replace.checked});
+      });
+      buttons.append(cancel,confirm);
+      dialog.append(title, description, from, choices, verifyLabel,replaceLabel,note,buttons);
+      overlay.append(dialog);
+      document.body.append(overlay);
+      update();
+      confirm.focus();
+    });
+  }
+
   async function openZohoTicket() {
     const workspaceText = getWorkspaceText();
     if (!workspaceText || !workspaceText.trim()) {
@@ -1052,6 +1182,8 @@
     }
     // Final request/incident check happens AFTER account and platform mapping.
     if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(payload,workspaceText);
+    if (window.MAUBackupSubcategories) window.MAUBackupSubcategories.correctPayload(payload,workspaceText);
+    if (window.MAUZohoMap) window.MAUZohoMap.correctPayload(payload,workspaceText);
     const guide = window.MAUZohoExtensionGuide;
     if (!guide || !(await guide.check())) {
       guide?.open();
@@ -1060,15 +1192,21 @@
 
     const targetUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_ZOHO_NEW_TICKET_URL;
     try {
+      const listing = await sendExtensionBridgeRequest(ACTION_LIST_EDIT, {});
+      if (!listing || listing.ok === false) throw new Error(listing?.error || "Could not check open Zoho tabs");
+      const destination = await chooseTicketDestination(listing.tabs || [], payload);
+      if (!destination) return;
       const response = await sendExtensionBridgeRequest(ACTION_PREPARE_OR_FOCUS, {
         payload,
-        targetUrl
+        targetUrl,
+        ...destination
       });
       if (!response || response.ok === false) throw new Error(response?.error || "Zoho extension did not accept the ticket");
-      appendStatus("Zoho is opening. Please review the filled fields and submit the ticket manually.");
+      appendStatus(destination.mode === "edit"
+        ? `Zoho Edit Ticket ${destination.editTicketId} selected. Review every changed field and click Save manually.`
+        : "Zoho is opening a new ticket. Review the filled fields and submit manually.");
     } catch (error) {
-      guide?.open();
-      appendStatus("Zoho extension couldn't open the ticket. Check the extension and try again.");
+      appendStatus("Zoho autofill stopped: " + (error?.message || "Extension connection error"));
     }
   }
 
@@ -1076,7 +1214,7 @@
     const btn = $("createZohoTicketBtn");
     if (!btn) return;
     btn.textContent = "Create Ticket";
-    btn.title = "Open Zoho Desk and auto-fill the new ticket form from the workspace";
+    btn.title = "Open a new Zoho ticket or select an existing Edit Ticket tab";
     btn.addEventListener("click", openZohoTicket);
   }
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MAU Operation Desk - Zoho Autofill",
-  "version": "1.1.0",
-  "description": "Fill Zoho Desk tickets from MAU Operation Desk. Review and submit tickets yourself.",
+  "version": "1.3.0",
+  "description": "Fill new or explicitly selected existing Zoho Desk edit tickets from MAU; manual Save/Submit required.",
   "background": {
     "service_worker": "background.js"
   },
@@ -18,6 +18,7 @@
         "https://*.zoho.com.ph/*"
       ],
       "js": [
+        "zoho-dropdown-map.js",
         "content.js"
       ],
       "run_at": "document_idle",

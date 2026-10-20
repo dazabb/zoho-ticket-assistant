@@ -3,9 +3,10 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "MAU-2.4-r1";
+  const SCRIPT_REVISION = "MAU-2.7-edit-ticket";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
+  const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
   const BRIDGE_REQUEST_TYPE = "zta:bridge-request";
   const BRIDGE_RESPONSE_TYPE = "zta:bridge-response";
   const SKIP_AUTOFILL_LABELS = new Set([
@@ -16,7 +17,6 @@
     "Phone",
     "Mobile Number",
     "Ticket Owner",
-    "Technology/Platform",
     "SE's that can handle this ticket",
     "PM/SD of this account",
     "Status",
@@ -39,7 +39,8 @@
     "Support Agent",
     "Channel",
     "Ticket Source",
-    "Ticket Category"
+    "Ticket Category",
+    "Technology/Platform"
   ]);
   const PROTECTED_FIELD_LABELS = new Set([
     "Serial Number"
@@ -362,6 +363,7 @@
     "Ticket Category",
     "Issue Category",
     "Issue Sub-Category",
+    "Technology/Platform",
     "Severity Level",
     "Support Level",
     "Issue Description",
@@ -430,11 +432,11 @@
     window.addEventListener("message", (event) => {
       const data = event && event.data;
       if (event.source !== window || (location.protocol === "file:" ? event.origin !== "null" : event.origin !== location.origin) || !data || data.type !== BRIDGE_REQUEST_TYPE || !data.requestId) return;
-      if (!new Set(["pingMauZohoExtension", ACTION_PREPARE_OR_FOCUS]).has(data.action)) return;
+      if (!new Set(["pingMauZohoExtension", ACTION_PREPARE_OR_FOCUS, ACTION_LIST_EDIT]).has(data.action)) return;
 
       chrome.runtime.sendMessage({
         type: data.action,
-        ...(data.action === ACTION_PREPARE_OR_FOCUS ? (data.data || {}) : {})
+        ...([ACTION_PREPARE_OR_FOCUS, ACTION_LIST_EDIT].includes(data.action) ? (data.data || {}) : {})
       }, (response) => {
         const runtimeError = chrome.runtime.lastError;
         window.postMessage({
@@ -498,6 +500,12 @@
 
   function acceptPayload(payload, source) {
     if (!payload || !payload.fields || !isZohoTicketPage()) return { ok: false, reason: "not a Zoho page" };
+    if (payload.__mauEdit?.mode === "edit") {
+      const check = validateEditTab(payload);
+      if (!check.ok) { ensurePanel(); setPanelStatus(check.reason,"error"); panel(check.reason,"error"); return check; }
+    } else if (currentTicketMode() === "edit") {
+      return {ok:false, reason:"Edit tickets require explicit confirmation in MAU."};
+    }
 
     pendingPayload = payload;
     ensurePanel();
@@ -580,7 +588,7 @@
       aliases.unshift("Level1.5");
       aliases.push("1.5");
     }
-    if (label === "Issue Category" && normalize(raw).includes(normalize("Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage )"))) {
+    if (label === "Issue Category" && normalize(raw).includes(normalize("Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage"))) {
       aliases.push("Infrastructure");
       aliases.push("Infrastructure ( Zadara Storage / Zadara Infrastructure / OS / Dell Server and Storage");
       aliases.push("Zadara Infrastructure");
@@ -744,6 +752,32 @@
     return isVisible(body) || body.isContentEditable || body.getAttribute("contenteditable") === "true";
   }
 
+  function currentTicketMode() {
+    return /^\/agent\/amtiphilippines\/sandz\/tickets\/edit\/\d+\/?$/i.test(location.pathname)
+      ? "edit" : "new";
+  }
+
+  function validateEditTab(payload) {
+    const selected = payload && payload.__mauEdit;
+    if (!selected || selected.mode !== "edit") return {ok:false, reason:"Edit tab was not explicitly selected."};
+    if (currentTicketMode() !== "edit") return {ok:false, reason:"Zoho is not displaying the selected edit ticket."};
+    const id = location.pathname.match(/\/edit\/(\d+)\/?$/i)?.[1];
+    if (!id || id !== String(selected.ticketId || "")) return {ok:false, reason:"The Zoho ticket ID changed. Autofill cancelled."};
+
+    // If Zoho exposes the linked Account Name as a form value, prevent cross-customer writes.
+    const expected = String(payload.fields?.["Account Name"] || "").trim();
+    const actualInput = document.querySelector(
+      'input[data-id="accountId"],input[data-test-id="accountId"],input[data-id="account_name"],'+
+      '[data-id="accountId"] input,[data-test-id="accountId"] input,[data-id="account_name"] input'
+    );
+    const actual = String(actualInput?.value || "").trim();
+    const clean = text => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (expected && actual && !/^(verify|none|select)/i.test(expected) && clean(expected) !== clean(actual)) {
+      return {ok:false, reason:`Customer mismatch: Zoho shows "${actual}" but MAU has "${expected}". Nothing was changed.`};
+    }
+    return {ok:true};
+  }
+
   function isFormSufficientlyLoaded() {
     const visibleInputs = Array.from(
       document.querySelectorAll("input:not([type='hidden']), select, textarea, [role='combobox'], [role='textbox']")
@@ -751,6 +785,13 @@
       .filter(isVisible)
       .filter((el) => !el.closest(`#${PANEL_ID}`));
 
+    if (currentTicketMode() === "edit") {
+      // Existing ticket edit panels normally have no editable Subject control.
+      // Wait for actual Ticket Properties picklists; never treat the message thread as the form.
+      return visibleInputs.length >= 3 && document.readyState === "complete" &&
+        !!(resolveDefinitionControl("Ticket Category") || resolveDefinitionControl("Issue Category") ||
+          resolveDefinitionControl("Supported Portfolio"));
+    }
     if (visibleInputs.length < 5) return false;
 
     const subject = firstVisible([
@@ -1742,20 +1783,54 @@
     });
   }
 
+  // Last-resort guard if older MAU tabs send a legacy invalid Backup - Incident subcategory.
+  const BACKUP_INCIDENT_SUBCATEGORIES = new Set([
+    "Access Issue", "Additional Compute (Expansion)", "Capacity Issue", "Check Backup Policy",
+    "Check Backup Retention and Performance", "Configuration Issue", "Device Issue", "Hardisk Change",
+    "Migration", "Reliability Issue", "Restart backup policy", "Restart Backup Server",
+    "Restart Catalog", "Restoration", "Retrigger failed backup", "Run Guide", "Tape Request"
+  ]);
+  function guardBackupSubcategory(payload) {
+    if (!payload || !payload.fields) return false;
+    const f=payload.fields;
+    if (String(f["Issue Category"] || "").trim() !== "Backup - Incident") return false;
+    const sub=String(f["Issue Sub-Category"] || "").trim();
+    if (!sub || BACKUP_INCIDENT_SUBCATEGORIES.has(sub)) return false;
+    f["Issue Sub-Category"] = "";
+    return true;
+  }
+
   async function runAutofill(payload) {
     if (!payload || !payload.fields || autofillRunning) return;
+    const unsupportedSubcategory = guardBackupSubcategory(payload);
+    // Extension is a second independent validation gate; works even with stale MAU tabs.
+    const outcome=window.MAUZohoMap?.correctPayload(payload,payload.rawWorkspace||'');
+    const mappingWarnings=outcome?.zohoDropdownWarnings || [];
     autofillRunning = true;
 
     try {
+      if (unsupportedSubcategory) panel("The Backup Incident subcategory is not a Zoho option; left blank for review.", "error");
+      if (mappingWarnings.length) panel('Zoho mapping needs review: '+mappingWarnings.join('; ')+'. Invalid choices were not autofilled.', 'error');
       const autofillStartedAt = Date.now();
       let firstFilledAt = 0;
       panel(`Loaded script revision ${SCRIPT_REVISION}`, "info");
-      setPanelStatus("Waiting for Zoho new ticket form...", "info");
-      panel("Waiting for Zoho new ticket form...", "info");
+      const editing = payload.__mauEdit?.mode === "edit";
+      if (editing) {
+        const safety = validateEditTab(payload);
+        if (!safety.ok) { setPanelStatus(safety.reason, "error"); panel(safety.reason, "error"); return; }
+        panel("Editing existing ticket #" + payload.__mauEdit.ticketId + ". Ticket will NOT be saved automatically.", "info");
+      }
+      setPanelStatus(editing ? "Waiting for Zoho Edit Ticket fields..." : "Waiting for Zoho new ticket form...", "info");
+      panel(editing ? "Waiting for Zoho Edit Ticket fields..." : "Waiting for Zoho new ticket form...", "info");
       setPanelStatus("Waiting for Zoho form to finish loading...", "info");
       panel("Waiting for Zoho form to finish loading...", "info");
       const formReady = await waitForTicketForm(30000);
       if (!formReady) {
+        if (editing) {
+          setPanelStatus("Edit fields not ready. Open the ticket Properties / Edit panel, then retry from MAU. No fields were changed.", "error");
+          panel("Edit fields not ready. No changes made.", "error");
+          return;
+        }
         panel("Zoho form readiness timed out. Starting autofill against the current page state.", "error");
       }
       setPanelStatus("Zoho form is ready. Starting autofill now.", "info");
@@ -1769,6 +1844,15 @@
       let supportAgentStageReached = false;
 
       for (const label of FILL_ORDER) {
+        if (editing && !validateEditTab(payload).ok) {
+          panel("The edit ticket changed during autofill. Stopped immediately.","error");
+          setPanelStatus("Ticket changed; autofill stopped.","error");
+          return;
+        }
+        if (editing && (["Status", "Support Agent", "Support Level", "Channel", "Ticket Source"].includes(label) ||
+            (!payload.__mauEdit.replaceIdentity && ["Customer Company Name", "Subject", "Description", "Issue Description"].includes(label)))) {
+          continue;
+        }
         if (SKIP_AUTOFILL_LABELS.has(label)) {
           continue;
         }
@@ -1807,7 +1891,9 @@
         }
       }
 
-      if (supportAgentStageReached) {
+      if (editing) {
+        panel("Existing Serial Number and ownership fields were preserved.", "info");
+      } else if (supportAgentStageReached) {
         const serialCleanup = await clearProtectedField("Serial Number");
         if (serialCleanup.ok && serialCleanup.cleared) {
           panel("Cleared protected field: Serial Number", "info");
@@ -1828,7 +1914,7 @@
         panel(`Speed: no fields were filled after ${totalElapsedMs}ms.`, "error");
       }
 
-      const finalMessage = `Done. Filled ${filled} field(s). ${failed ? `${failed} field(s) need manual checking.` : "Review the ticket, then click Submit manually."}`;
+      const finalMessage = `Done. Filled ${filled} field(s). ${failed ? `${failed} field(s) need manual checking. ` : ""}Review the ${editing ? "edited" : "new"} ticket and click ${editing ? "Save" : "Submit"} manually.`;
       setPanelStatus(finalMessage, failed ? "error" : "success");
       panel(finalMessage, failed ? "error" : "success");
       if (!failed) {
