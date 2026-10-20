@@ -430,3 +430,34 @@ body.theme-dark #followupPane,body.theme-dark #followupFrame{background:#1b1d22}
 .composer-remove-image{position:absolute;right:3px;top:3px;width:23px;height:23px;display:grid;place-items:center;padding:0;border:0;border-radius:50%;background:#20242bcc;color:#fff;cursor:pointer;font-size:18px;}
 .composer-remove-image:hover{background:#222;}
 @media(max-width:700px){#chatComposer .composer-hint{display:none;}#chatComposer .composer-attach-button span{display:none;}.composer-image-item{width:74px;height:74px;flex-basis:74px;}}
+
+
+/* Zoho extension setup: intentionally simple, no automatic browser installation. */
+.zoho-setup-button{min-height:40px;padding:9px 13px;border-radius:11px;border:1px solid var(--mau-border,#dce2e9);background:var(--mau-surface,#f8f9fb);color:var(--mau-text,#253247);font:inherit;font-weight:600;cursor:pointer}
+.zoho-setup-button:hover{background:var(--mau-secondary,#edf1f7)}
+.zoho-setup-button.connected{color:#18774a;border-color:#a4d7bb;background:#ecf8f1}
+.zoho-extension-overlay[hidden]{display:none!important}
+.zoho-extension-overlay{position:fixed;inset:0;z-index:11000;display:grid;place-items:center;padding:18px;background:rgba(19,28,40,.55);backdrop-filter:blur(3px)}
+.zoho-extension-dialog{box-sizing:border-box;max-width:570px;width:100%;max-height:90vh;overflow:auto;border-radius:20px;background:#fff;border:1px solid #e1e5eb;color:#1e293b;padding:22px 25px;box-shadow:0 20px 70px #0002}
+.zoho-extension-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.zoho-extension-heading h2{font-size:21px;letter-spacing:-.4px;margin:0;font-weight:750;color:inherit}
+.zoho-extension-x{width:34px;height:34px;border:1px solid #dce2e9;border-radius:100px;background:#f5f6f8;color:#394456;font-size:23px;cursor:pointer}
+#zohoExtensionStatus{font-size:13px;color:#53647b;margin:14px 0;border-radius:10px;padding:11px 13px;background:#f4f6f9}
+#zohoExtensionStatus.is-ok{background:#edf9f2;color:#17683c}
+#zohoExtensionStatus.is-bad{background:#fff7e8;color:#80551e}
+.zoho-extension-steps{margin:13px 0 20px;padding-left:25px;display:grid;gap:12px;font-size:14px;line-height:1.5}
+.zoho-extension-steps li{padding-left:3px}
+.zoho-extension-steps a{font-weight:700;color:#125bc9}
+.zoho-copy-link{border:0;background:transparent;color:#125bc9;font-size:12px;text-decoration:underline;cursor:pointer;padding:0 3px}
+.zoho-extension-dialog-actions{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.zoho-extension-dialog-actions button{border:1px solid #d5dce5;border-radius:10px;padding:11px 16px;background:#f4f6f9;color:#29394a;font-size:13px;cursor:pointer;font-weight:650}
+.zoho-extension-dialog-actions .zoho-primary{background:#2569e8;border-color:#2569e8;color:#fff}
+.zoho-extension-help{font-size:12px;color:#657184;line-height:1.6;margin:16px 0 0}
+body.theme-dark .zoho-extension-dialog{background:#1c2029;color:#eef1f6;border-color:#3c4350}
+body.theme-dark #zohoExtensionStatus{background:#262c39;color:#c1cbd7}
+body.theme-dark #zohoExtensionStatus.is-ok{color:#adf5ce;background:#1c3b2d}
+body.theme-dark #zohoExtensionStatus.is-bad{color:#ffdea5;background:#44331f}
+body.theme-dark .zoho-extension-x,body.theme-dark .zoho-extension-dialog-actions button:not(.zoho-primary){background:#303845;border-color:#505967;color:#eef1f6}
+body.theme-dark .zoho-extension-steps a,body.theme-dark .zoho-copy-link{color:#a4bfff}
+body.theme-dark .zoho-extension-help{color:#aab6c8}
+@media(max-width:600px){.zoho-extension-dialog{padding:18px}.zoho-extension-steps{font-size:13px}.zoho-setup-button{font-size:12px;padding:7px 9px}}

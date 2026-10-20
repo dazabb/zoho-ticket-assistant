@@ -1034,7 +1034,7 @@
         requestId,
         action,
         data: data || {}
-      }, "*");
+      }, location.protocol === "file:" ? "*" : location.origin);
     });
   }
 
@@ -1052,23 +1052,24 @@
     }
     // Final request/incident check happens AFTER account and platform mapping.
     if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(payload,workspaceText);
-    copyFallbackPayload(payload);
-    const targetUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_ZOHO_NEW_TICKET_URL;
-    const fallbackUrl = buildHashFallbackUrl(payload, targetUrl);
+    const guide = window.MAUZohoExtensionGuide;
+    if (!guide || !(await guide.check())) {
+      guide?.open();
+      return;
+    }
 
+    const targetUrl = localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_ZOHO_NEW_TICKET_URL;
     try {
       const response = await sendExtensionBridgeRequest(ACTION_PREPARE_OR_FOCUS, {
         payload,
         targetUrl
       });
-      if (response && response.ok === false) {
-        throw new Error(response.error || "Extension bridge refused request");
-      }
-      return;
-    } catch (error) {}
-
-    window.open(fallbackUrl, "_blank", "noopener");
-    appendStatus("Opening Zoho ticket page and sending the auto-fill data. Keep the Chrome extension enabled, then review before submitting.");
+      if (!response || response.ok === false) throw new Error(response?.error || "Zoho extension did not accept the ticket");
+      appendStatus("Zoho is opening. Please review the filled fields and submit the ticket manually.");
+    } catch (error) {
+      guide?.open();
+      appendStatus("Zoho extension couldn't open the ticket. Check the extension and try again.");
+    }
   }
 
   function installButton() {

@@ -3,11 +3,11 @@
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
 const ROOT=__dirname;
 const PORT=Number(process.env.PORT)||3000;
-const TYPES={'.html':'text/html','.css':'text/css','.js':'application/javascript','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/x-icon','.svg':'image/svg+xml'};
+const TYPES={'.html':'text/html','.css':'text/css','.js':'application/javascript','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/x-icon','.svg':'image/svg+xml','.zip':'application/zip'};
 http.createServer((req,res)=>{
   let segments;
   try{const url=new URL(req.url,'http://127.0.0.1');segments=decodeURIComponent(url.pathname).split('/').filter(Boolean);}catch(e){res.writeHead(400);res.end('Bad request');return;}
-  const allowed=new Set(['index.html','library','reporting','images']);
+  const allowed=new Set(['index.html','library','reporting','images','MAU-Zoho-Extension-v1.1.zip']);
   if(segments.length===0)segments=['index.html'];
   if(!allowed.has(segments[0])||segments.some(x=>x==='..'||x==='.'||x.startsWith('.'))||(!['library','reporting','images'].includes(segments[0])&&segments.length!==1)){
     res.writeHead(404);res.end('Not found');return;

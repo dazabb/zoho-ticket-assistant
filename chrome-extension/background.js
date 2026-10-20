@@ -8,6 +8,20 @@
 
   const pendingPayloadByTabId = new Map();
   const targetUrlByTabId = new Map();
+  const PENDING_PREFIX = "mauPendingZohoTab:";
+  async function storePending(tabId, payload) {
+    pendingPayloadByTabId.set(tabId, payload);
+    await chrome.storage.session.set({ [PENDING_PREFIX + tabId]: payload });
+  }
+  async function readPending(tabId) {
+    if (pendingPayloadByTabId.has(tabId)) return pendingPayloadByTabId.get(tabId);
+    const result = await chrome.storage.session.get(PENDING_PREFIX + tabId);
+    return result[PENDING_PREFIX + tabId] || null;
+  }
+  async function clearPending(tabId) {
+    pendingPayloadByTabId.delete(tabId);
+    await chrome.storage.session.remove(PENDING_PREFIX + tabId);
+  }
 
   function stripHash(url) {
     return String(url || "").split("#")[0];
@@ -61,7 +75,7 @@
   async function resolveTrackedTab(targetUrl) {
     const storedTabId = await getStoredTabId();
     const storedTab = await getTabById(storedTabId);
-    if (storedTab) {
+    if (storedTab && urlsMatch(storedTab.url, targetUrl)) {
       targetUrlByTabId.set(storedTab.id, targetUrl);
       return storedTab;
     }
@@ -122,9 +136,17 @@
       const canSendNow = result.reused && !result.navigated;
       const delivered = canSendNow ? await sendAutofill(tabId, payload) : false;
       if (!delivered) {
-        pendingPayloadByTabId.set(tabId, payload);
+        await storePending(tabId, payload);
+        // Zoho can finish loading before Chrome fires the next update event.
+        // Retry shortly; storage.session also keeps the queued data through worker suspension.
+        setTimeout(async () => {
+          try {
+            const stillPending = await readPending(tabId);
+            if (stillPending && await sendAutofill(tabId, stillPending)) await clearPending(tabId);
+          } catch (_) { /* onUpdated will also retry on page load */ }
+        }, 1400);
       } else {
-        pendingPayloadByTabId.delete(tabId);
+        await clearPending(tabId);
       }
     }
 
@@ -136,10 +158,41 @@
     };
   }
 
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (!message || message.type !== ACTION_PREPARE_OR_FOCUS) return undefined;
+  function isAllowedAppSender(sender) {
+    try {
+      const parsed = new URL(sender && sender.url || "");
+      const host = parsed.hostname.toLowerCase();
+      if ((host === "127.0.0.1" || host === "localhost") && parsed.port === "3000") return true;
+      if (host === "dazabb.github.io" && parsed.pathname.toLowerCase().startsWith("/zoho-ticket-assistant/")) return true;
+      // Locally opened MAU can use file:// after the user explicitly enables file URL access.
+      if (parsed.protocol === "file:" && /\/index\.html$/i.test(parsed.pathname)) return true;
+      return false;
+    } catch (e) { return false; }
+  }
 
-    handlePrepareOrFocus(message)
+  function safeTargetUrl(requested) {
+    try {
+      const url = new URL(stripHash(requested || DEFAULT_ZOHO_NEW_TICKET_URL));
+      const host = url.hostname.toLowerCase();
+      const trustedHost = host === "helpcenter.amti.com.ph" || host.endsWith(".zoho.com") || host.endsWith(".zoho.com.ph");
+      if (url.protocol !== "https:" || !trustedHost || !/\/tickets\/new\/?$/i.test(url.pathname)) return null;
+      return url.href;
+    } catch(e) { return null; }
+  }
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (!message || !isAllowedAppSender(sender)) return undefined;
+    if (message.type === "pingMauZohoExtension") {
+      sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
+      return undefined;
+    }
+    if (message.type !== ACTION_PREPARE_OR_FOCUS) return undefined;
+    const targetUrl = safeTargetUrl(message.targetUrl);
+    if (!targetUrl || !message.payload || !message.payload.fields || typeof message.payload.fields !== 'object') {
+      sendResponse({ ok:false, error:"Invalid ticket or Zoho address" });
+      return undefined;
+    }
+    handlePrepareOrFocus({ targetUrl, payload: message.payload })
       .then((response) => sendResponse(response))
       .catch((error) => {
         sendResponse({
@@ -152,15 +205,15 @@
 
   chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     if (changeInfo.status !== "complete") return;
-    if (!pendingPayloadByTabId.has(tabId)) return;
+    const payload = await readPending(tabId);
+    if (!payload) return;
 
     const expectedUrl = targetUrlByTabId.get(tabId) || DEFAULT_ZOHO_NEW_TICKET_URL;
     if (!urlsMatch(tab && tab.url, expectedUrl)) return;
 
-    const payload = pendingPayloadByTabId.get(tabId);
     const delivered = await sendAutofill(tabId, payload);
     if (delivered) {
-      pendingPayloadByTabId.delete(tabId);
+      await clearPending(tabId);
     }
   });
 

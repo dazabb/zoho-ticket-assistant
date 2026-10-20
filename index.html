@@ -104,7 +104,7 @@
         <details class="toolbar-more"><summary>Workspace tools <span aria-hidden="true">⌄</span></summary>
           <div class="toolbar-menu">
             <label class="menu-label">Saved ticket sessions</label><div class="session-controls"><select id="chatSessionSelect" aria-label="Saved chat sessions"></select><button class="toolbar-btn" id="newChatSessionBtn">New</button><button class="toolbar-btn" id="renameChatSessionBtn">Rename</button><button class="toolbar-btn" id="deleteChatSessionBtn">Delete</button></div>
-            <div class="toolbar-menu-grid"><button class="toolbar-btn" onclick="toggleTheme()">Theme</button><button class="toolbar-btn" onclick="openDocumentationModal()">Docs</button><button class="toolbar-btn api-btn" onclick="openApiModal()">API key & usage</button><button class="toolbar-btn assistant-btn" onclick="toggleDisplayChatBotContainer()">Open chat</button><button type="button" class="toolbar-btn" id="openAccountReferenceBtn">Account reference</button></div>
+            <div class="toolbar-menu-grid"><button class="toolbar-btn" onclick="toggleTheme()">Theme</button><button class="toolbar-btn" onclick="openDocumentationModal()">Docs</button><button class="toolbar-btn api-btn" onclick="openApiModal()">API key & usage</button><button class="toolbar-btn assistant-btn" onclick="toggleDisplayChatBotContainer()">Open chat</button><button type="button" class="toolbar-btn" id="openAccountReferenceBtn">Account reference</button><button type="button" class="toolbar-btn" id="openZohoExtensionSettingsBtn">Zoho extension</button></div>
           </div>
         </details>
       </div>
@@ -119,6 +119,7 @@
             <div class="workspace-subtitle"></div>
           </div>
           <div class="workspace-actions">
+            <button type="button" id="openZohoExtensionInstallBtn" class="zoho-setup-button" title="Install the Zoho Desk autofill extension">Install extension</button>
             <button id="createZohoTicketBtn" title="Open Zoho Desk using the latest generated ticket fields">Create Ticket</button>
           </div>
         </div>
@@ -184,6 +185,23 @@
     <div id="statusBar" class="statusbardesign"></div>
   </div>
 
+
+  <div id="zohoExtensionOverlay" class="zoho-extension-overlay" hidden>
+    <section class="zoho-extension-dialog" role="dialog" aria-modal="true" aria-labelledby="zohoExtensionTitle">
+      <div class="zoho-extension-heading"><h2 id="zohoExtensionTitle">Set up Zoho autofill</h2><button type="button" id="closeZohoExtensionGuide" class="zoho-extension-x" aria-label="Close">×</button></div>
+      <p id="zohoExtensionStatus" role="status" aria-live="polite">Checking extension…</p>
+      <ol class="zoho-extension-steps">
+        <li><a id="downloadZohoExtension" href="MAU-Zoho-Extension-v1.1.zip" download>Download extension</a> and extract the ZIP.</li>
+        <li>In Chrome, open <strong>chrome://extensions</strong>. <button type="button" class="zoho-copy-link" id="copyChromeExtensionsUrl">Copy address</button></li>
+        <li>Turn on <strong>Developer mode</strong>, then choose <strong>Load unpacked</strong>.</li>
+        <li>Select the extracted <strong>MAU-Zoho-Extension</strong> folder.</li>
+        <li>If you open <code>index.html</code> directly instead of using the start file, enable <strong>Allow access to file URLs</strong> in the extension's Details.</li>
+      </ol>
+      <div class="zoho-extension-dialog-actions"><button type="button" id="checkZohoExtensionBtn" class="zoho-primary">Check connection</button><button type="button" id="closeZohoExtensionBottomBtn">Close</button></div>
+      <p class="zoho-extension-help">After connecting, click <strong>Create Ticket</strong>. Zoho opens with the form filled for you to review. The extension never submits tickets automatically.</p>
+    </section>
+  </div>
+
   <div class="modal-api-overlay" id="modalApi">
     <div class="modal-api-box ai-connection-dialog user-api-dialog">
       <button class="modal-api-close" onclick="closeApiModal()" aria-label="Close API settings">×</button>
@@ -237,6 +255,7 @@
   <script src="library/customer-safety.js"></script>
   <script src="library/request-safety.js"></script>
   <script src="library/init.js"></script>
+  <script src="library/zoho-extension-setup.js"></script>
   <script src="library/zoho-ui-autofill.js"></script>
   <script src="library/navigation.js"></script>
   <script src="library/account-reference.js"></script>

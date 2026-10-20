@@ -3,7 +3,7 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "2026-05-19-r13";
+  const SCRIPT_REVISION = "MAU-2.4-r1";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
   const BRIDGE_REQUEST_TYPE = "zta:bridge-request";
@@ -410,19 +410,31 @@
       || host.endsWith(".zoho.com.ph");
   }
 
+  function isMauWorkspacePage() {
+    const host = location.hostname.toLowerCase();
+    const path = location.pathname.toLowerCase();
+    if ((host === "127.0.0.1" || host === "localhost") && location.port === "3000") return true;
+    if (host === "dazabb.github.io" && path.startsWith("/zoho-ticket-assistant/")) return true;
+    if (location.protocol === "file:" && /\/index\.html$/i.test(path)) {
+      return !!document.getElementById("createZohoTicketBtn")
+        && !!document.getElementById("chatBotContainer")
+        && document.title.includes("MAU Operation Desk");
+    }
+    return false;
+  }
+
   function installAssistantBridge() {
-    if (bridgeInstalled || !chrome || !chrome.runtime || !window || !window.addEventListener) return;
+    if (bridgeInstalled || !isMauWorkspacePage() || !chrome?.runtime?.id || !window?.addEventListener) return;
     bridgeInstalled = true;
 
     window.addEventListener("message", (event) => {
       const data = event && event.data;
-      if (event.source !== window || !data || data.type !== BRIDGE_REQUEST_TYPE || !data.requestId || !data.action) {
-        return;
-      }
+      if (event.source !== window || (location.protocol === "file:" ? event.origin !== "null" : event.origin !== location.origin) || !data || data.type !== BRIDGE_REQUEST_TYPE || !data.requestId) return;
+      if (!new Set(["pingMauZohoExtension", ACTION_PREPARE_OR_FOCUS]).has(data.action)) return;
 
       chrome.runtime.sendMessage({
         type: data.action,
-        ...(data.data || {})
+        ...(data.action === ACTION_PREPARE_OR_FOCUS ? (data.data || {}) : {})
       }, (response) => {
         const runtimeError = chrome.runtime.lastError;
         window.postMessage({
@@ -431,7 +443,7 @@
           ok: !runtimeError && !!(response && response.ok),
           response: response || null,
           error: runtimeError ? runtimeError.message : response && response.error
-        }, "*");
+        }, location.protocol === "file:" ? "*" : location.origin);
       });
     });
   }

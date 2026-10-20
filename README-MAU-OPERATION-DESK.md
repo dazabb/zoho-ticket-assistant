@@ -21,3 +21,8 @@ Gemini requests are made directly from the browser to Google; no shared MAU back
 Use your own Google AI Studio project without billing if you want to avoid paid API charges. Google may use free-tier content to improve products; get approval before submitting confidential support records. Never commit API keys or Zerto/customer exports to GitHub. If internet-facing hosting is desired, restrict access separately because the static version does not provide secure user authentication.
 
 See `README-UI-v0.8.md` for implementation notes and `README-MONDE-REPORTING.md` for the CSV workflow.
+
+
+## Zoho Create Ticket extension - v2.4
+
+The **Install extension** button is next to **Create Ticket**. Download the extension ZIP and follow the in-app Chrome instructions (or see `README-ZOHO-EXTENSION-v2.4.md`). **Check connection** before Create Ticket. The app never submits the Zoho form automatically.

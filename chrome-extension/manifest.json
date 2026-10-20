@@ -1,20 +1,33 @@
 {
   "manifest_version": 3,
-  "name": "Ticket Assistant Zoho Autofill",
-  "version": "1.0.1",
-  "description": "Auto-fills the Zoho Desk new ticket form using data opened from Ticket Assistant.",
+  "name": "MAU Operation Desk - Zoho Autofill",
+  "version": "1.1.0",
+  "description": "Fill Zoho Desk tickets from MAU Operation Desk. Review and submit tickets yourself.",
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["file:///*", "http://*/*", "https://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "http://127.0.0.1:3000/*",
+        "http://localhost:3000/*",
+        "https://dazabb.github.io/zoho-ticket-assistant/*",
+        "file:///*",
+        "https://helpcenter.amti.com.ph/*",
+        "https://*.zoho.com/*",
+        "https://*.zoho.com.ph/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
   ],
-  "permissions": ["clipboardRead", "tabs", "storage"],
+  "permissions": [
+    "tabs",
+    "storage"
+  ],
   "host_permissions": [
     "https://helpcenter.amti.com.ph/*",
     "https://*.zoho.com/*",
