@@ -78,10 +78,15 @@
   if(themeButton)themeButton.addEventListener('click',()=>{
     if(typeof window.toggleTheme==='function') window.toggleTheme();
   });
+  function sendMondeProfile(){
+    const frame=document.getElementById('mondeFrame');
+    if(frame?.contentWindow)frame.contentWindow.postMessage({type:'MAU_PROFILE',profileId:window.MAUActiveProfileId||'guest'},'*');
+  }
   for(const id of ['mondeFrame','followupFrame']){
     const frame=document.getElementById(id);
-    if(frame)frame.addEventListener('load',()=>window.syncThemePreferenceButton());
+    if(frame)frame.addEventListener('load',()=>{window.syncThemePreferenceButton();if(id==='mondeFrame')sendMondeProfile();});
   }
+  window.addEventListener('mau:profilechange',sendMondeProfile);
   window.syncThemePreferenceButton();
 
   const aiButton=document.getElementById('openTeamAiBtn');

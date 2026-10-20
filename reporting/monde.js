@@ -3,9 +3,59 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const ORDER = ['MONDE-MAKATI', 'MONDE-AWS', 'MONDE-MK2', 'MONDE-MK2-2', 'MONDE-LenovoSTR'];
-  const state = {vpgs:null, alerts:null, fileNames:{}, images:{}, generated:false, subject:'', originalHtml:''};
+  const state = {vpgs:null, alerts:null, fileNames:{}, images:{}, generated:false, subject:'', originalHtml:'', profileId:'guest'};
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const localDate = () => {const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+  // The RPO column is seconds. Keep sub-minute ranges concise, but format
+  // longer readings in human units (e.g. 72 -> 1 minute and 12 seconds).
+  function duration(seconds){
+    if (!Number.isFinite(seconds) || seconds<0) return 'N/A';
+    const total=Math.round(seconds), h=Math.floor(total/3600), m=Math.floor(total%3600/60), sec=total%60;
+    const segments=[];
+    if(h)segments.push(h+' hour'+(h===1?'':'s'));
+    if(m)segments.push(m+' minute'+(m===1?'':'s'));
+    if(sec || !segments.length)segments.push(sec+' second'+(sec===1?'':'s'));
+    return segments.length===1?segments[0]:segments.length===2?segments.join(' and '):segments[0]+', '+segments[1]+' and '+segments[2];
+  }
+  function rpoRange(values, abbreviated){
+    const nums=values.filter(Number.isFinite);
+    if(!nums.length)return abbreviated?'N/A':'';
+    const low=Math.min(...nums),high=Math.max(...nums);
+    if(low===high)return abbreviated && high<60?`${high}s`:duration(high);
+    if(high<60)return abbreviated?`${low}–${high}s`:`${low}-${high} seconds`;
+    return `${duration(low)} to ${duration(high)}`;
+  }
+  // Profile ID arrives from the parent MAU frame. Never share recipients
+  // across different picture profiles, including guest.
+  function profileKey(){return 'mau.monde.recipients.v1::'+state.profileId;}
+  function loadRecipients(){
+    let data={};try{data=JSON.parse(localStorage.getItem(profileKey())||'{}')}catch(e){}
+    $('recipientTo').value=typeof data.to==='string'?data.to:DEFAULT_TO;
+    $('recipientCc').value=typeof data.cc==='string'?data.cc:DEFAULT_CC;
+    $('recipientsStatus').textContent=state.profileId==='guest'?'Guest profile':'Saved for this profile';
+  }
+  function saveRecipients(){
+    if(state.profileId==='guest'){toast('Select a named MAU profile to save recipients.');return;}
+    const data={to:$('recipientTo').value.trim(),cc:$('recipientCc').value.trim()};
+    try{localStorage.setItem(profileKey(),JSON.stringify(data));$('recipientsStatus').textContent='Saved';toast('Recipients saved.')}catch(e){toast('Could not save recipients in this browser.')}
+  }
+  const DEFAULT_TO='kristina.tumaub@mondenissin.com, godfree.rasonable@mondenissin.com';
+  const DEFAULT_CC='kris.pabustan@mondenissin.com, duane.banzon@mondenissin.com, support_ph@sandz.com, baas_ph@sandz.com, carlos_ochoa@sandz.com, chris_ramos@sandz.com, khelly_gabriel@sandz.com';
+  window.addEventListener('message',event=>{
+    if(event.source!==window.parent||!event.data||event.data.type!=='MAU_PROFILE')return;
+    const profile=String(event.data.profileId||'guest').replace(/[^a-z0-9_-]/gi,'').slice(0,80)||'guest';
+    if(state.profileId!==profile){state.profileId=profile;loadRecipients();}
+  });
+  $('saveRecipients').addEventListener('click',saveRecipients);
+  function copyText(text){
+    if(navigator.clipboard?.writeText)return navigator.clipboard.writeText(text);
+    const inp=document.createElement('textarea');inp.value=text;inp.style.position='fixed';inp.style.left='-9999px';document.body.appendChild(inp);inp.select();const ok=document.execCommand('copy');inp.remove();if(!ok)throw new Error('Copy failed');return Promise.resolve();
+  }
+  for(const [buttonId,fieldId,label] of [['copyTo','recipientTo','To'],['copyCc','recipientCc','Cc']]){
+    $(buttonId).addEventListener('click',async()=>{try{await copyText($(fieldId).value);toast(label+' copied.')}catch(e){toast('Select and copy the '+label+' field.')}});
+  }
+  loadRecipients();
+
   $('reportDate').value = localDate();
   let toastTimeout;
   function toast(message){$('toast').textContent=message;$('toast').classList.add('visible');clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>$('toast').classList.remove('visible'),4200)}
@@ -70,29 +120,46 @@
     matches.sort((x,y)=>y.name.length-x.name.length);
     return matches[0]||null;
   }
-  function latestVpgAlerts(){
-    const chosen=new Map();
-    (state.alerts||[]).forEach(a=>{
-      if(a.entity!=='VPG')return;
-      const vpg=alertVpg(a);
-      // Never collapse unidentified alerts into another VPG by a shared alert code.
-      const identity=vpg?`vpg:${vpg.site.toLowerCase()}|${vpg.name.toLowerCase()}`:`unmatched:${a.sequence}`;
-      const candidate={...a,vpgName:vpg?vpg.name:'',matched:!!vpg};
-      const previous=chosen.get(identity);
-      const candidateTime=Number.isFinite(candidate.startedTime)?candidate.startedTime:-Infinity;
-      const previousTime=previous&&Number.isFinite(previous.startedTime)?previous.startedTime:-Infinity;
-      if(!previous||candidateTime>previousTime||candidateTime===previousTime&&candidate.sequence>previous.sequence)chosen.set(identity,candidate);
+  // The VPG export contains the current status. A timestamp in Monitoring Alert
+  // only tells us when an alarm started, not when it was resolved. Use a Red
+  // alarm for a currently Red VPG even if a newer Yellow alarm also exists.
+  // Select no more than one matching alarm of the SAME severity per VPG.
+  function currentVpgAlerts(){
+    return (state.vpgs||[]).filter(v=>v.level==='red'||v.level==='yellow').map(vpg=>{
+      const matching=(state.alerts||[]).filter(a=>
+        a.entity==='VPG'&&a.level===vpg.level&&alertVpg(a)===vpg);
+      matching.sort((a,b)=>b.startedTime-a.startedTime||b.sequence-a.sequence);
+      const selected=matching[0]||null;
+      return {
+        site:vpg.site,vpgName:vpg.name,level:vpg.level,matched:!!selected,
+        description:selected?.description||'',started:selected?.started||'',
+        vpg,matchingAlert:selected
+      };
+    }).sort((a,b)=>{
+      const ai=ORDER.indexOf(a.site),bi=ORDER.indexOf(b.site);
+      return (ai<0?99:ai)-(bi<0?99:bi)||a.vpgName.localeCompare(b.vpgName);
     });
-    return [...chosen.values()].sort((a,b)=>
-      ORDER.indexOf(a.site)-ORDER.indexOf(b.site) || a.vpgName.localeCompare(b.vpgName));
   }
   function conciseVpgName(a){
     const name=a.vpgName||'VPG not identified';
     return name.replace(/^\[[^\]]+\]\s*-?\s*/, '').trim()||name;
   }
-  function alertTotals(){
-    const alerts=latestVpgAlerts();
-    return {alerts,red:alerts.filter(a=>a.level==='red'),yellow:alerts.filter(a=>a.level==='yellow')};
+  // Status and alerts have different meanings. "Erroneous" in VPG Export
+  // represents the CURRENT VPG health; the alert "Started" timestamp marks
+  // when that specific alarm was raised, not when its VPG returned to green.
+  // Never downgrade a red VPG to yellow because a newer yellow alert exists.
+  function vpgHealthTotals(){
+    const all=state.vpgs||[];
+    return {
+      total:all.length,
+      healthy:all.filter(v=>v.level==='green'),
+      red:all.filter(v=>v.level==='red'),
+      yellow:all.filter(v=>v.level==='yellow'),
+      unknown:all.filter(v=>v.level==='unknown')
+    };
+  }
+  function alertsForVpg(vpg){
+    return (state.alerts||[]).filter(a=>a.entity==='VPG'&&alertVpg(a)===vpg);
   }
   function markDirty(){
     state.generated=false;state.subject='';$('reportSubject').innerHTML='<b>Subject:</b> —';$('reportPreview').innerHTML='';
@@ -110,7 +177,7 @@
     $('countTotal').textContent=counts.total;$('countGreen').textContent=counts.green;$('countYellow').textContent=counts.yellow;$('countRed').textContent=counts.red;
     $('siteGrid').innerHTML=sites().map(site=>{
       const rows=state.vpgs.filter(r=>r.site===site),normal=rows.filter(r=>/^meeting sla$/i.test(r.protection)),numbers=normal.map(r=>r.rpo).filter(Number.isFinite);
-      const range=numbers.length?(Math.min(...numbers)===Math.max(...numbers)?`${Math.min(...numbers)}s`:`${Math.min(...numbers)}–${Math.max(...numbers)}s`):'Not available';
+      const range=numbers.length?rpoRange(numbers,true):'Not available';
       const exceptions=rows.filter(r=>!/^meeting sla$/i.test(r.protection));
       const errors=rows.filter(r=>r.level==='red').length,warns=rows.filter(r=>r.level==='yellow').length;
       return `<div class="site"><strong>${escapeHtml(site)}</strong><div class="site-rpo">${range}</div><div class="detail">${rows.length} VPGs · ${normal.length} meeting SLA</div>${(exceptions.length||errors||warns)?`<span class="flag">${[exceptions.length?exceptions.length+' SLA exception(s)':'',errors?errors+' red':'',warns?warns+' yellow':''].filter(Boolean).join(' · ')}</span>`:'<span class="detail" style="color:#16834e">All meeting SLA</span>'}</div>`;
@@ -122,26 +189,31 @@
       if(!['image/png','image/jpeg','image/webp'].includes(f.type)){toast('Use PNG, JPEG, or WebP screenshot files.');e.target.value='';return}
       try{const site=sites()[Number(input.dataset.site)];state.images[site]=await new Promise((resolve,reject)=>{const fr=new FileReader();fr.onload=()=>resolve(fr.result);fr.onerror=reject;fr.readAsDataURL(f)});markDirty();toast(`${site} screenshot added. Generate again to include it.`)}catch(err){toast('Could not read screenshot.')}
     }));
-    $('alertList').innerHTML=latestVpgAlerts().map(a=>alertItem(a)).join('')||'<div class="empty">No VPG alerts in the imported monitoring file.</div>';
+    $('alertList').innerHTML=currentVpgAlerts().map(a=>alertItem(a)).join('')||'<div class="empty">No Red or Yellow VPGs in the imported VPG file.</div>';
     const others=(state.alerts||[]).filter(a=>a.entity!=='VPG');
     $('zvmAlerts').innerHTML=others.length?`<div class="mini"><b>Additional monitoring alerts (${others.length})</b> — review separately; these are not included in the VPG alert summary.</div>`+others.map(a=>alertItem(a)).join(''):'';
-    const active=latestVpgAlerts();
-    const vpgRawCount=(state.alerts||[]).filter(a=>a.entity==='VPG').length;
-    const oldCount=vpgRawCount-active.length;
-    $('alertToggle').textContent=`Latest alerts — ${active.length} VPG(s)${oldCount?` · ${oldCount} older alert(s) excluded`:''}`;
+    const current=currentVpgAlerts();
+    $('alertToggle').textContent=`Review VPG alerts — ${current.length} affected VPG${current.length===1?'':'s'}`;
     const warnings=[];
     if(!state.alerts)warnings.push('Monitoring Alert.csv is still needed.');
     if(counts.unknown)warnings.push(`${counts.unknown} VPG status value(s) were not recognized.`);
-    const alerts=latestVpgAlerts();
-    if(counts.yellow+counts.red>alerts.length)warnings.push('Some VPGs with unhealthy status have no matching monitoring alert.');
-    if(alerts.some(a=>!a.matched))warnings.push('Some alerts could not be matched to a VPG name; check the alert list.');
-    if(state.vpgs.some(r=>Number.isFinite(r.rpo)&&r.rpo>60))warnings.push('High actual RPO detected — check the exception in the report.');
+    const noMatching=current.filter(a=>!a.matched);
+    if(noMatching.length)warnings.push(`${noMatching.length} VPG(s) have no matching ${noMatching.map(a=>a.level.toUpperCase()).join('/')} alert details in the uploaded monitoring file.`);
+    // The exports can be captured at different times. Warn without treating an
+    // alert timestamp as proof that a VPG's current status changed.
+    const unmatched=(state.alerts||[]).filter(a=>a.entity==='VPG'&&!alertVpg(a));
+    if(unmatched.length)warnings.push(`${unmatched.length} VPG alert(s) could not be matched to the VPG export.`);
+    if(state.vpgs.some(r=>Number.isFinite(r.rpo)&&r.rpo>60))warnings.push('Some Actual RPO values exceed 60 seconds.');
     if(others.length)warnings.push(`${others.length} additional ZVM alerts require separate review.`);
     $('sourceStatus').className='info '+(warnings.length?'warn':complete?'ok':'');
     $('sourceStatus').textContent=complete?(warnings.length?'Check alerts: '+warnings.join(' '):'Files ready.'):'Upload Monitoring Alert.csv.';
   }
   function sites(){return [...new Set((state.vpgs||[]).map(r=>r.site).filter(Boolean))].sort((a,b)=>{const ia=ORDER.indexOf(a),ib=ORDER.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b)})}
-  function alertItem(a){return `<div class="alert-item ${a.level==='red'?'red':'yellow'}"><div class="alert-head"><span>${escapeHtml(a.level==='red'?'Red':a.level==='yellow'?'Yellow':'Other')} · ${escapeHtml(a.site)}</span><span>${escapeHtml(a.started||a.entity+' '+a.id)}</span></div><p>${escapeHtml(a.description)}</p></div>`}
+  function alertItem(a){
+    const status=a.level==='red'?'Red':'Yellow';
+    const description=a.description||`No matching ${status.toLowerCase()} monitoring alert details in the export. Verify in Zerto.`;
+    return `<div class="alert-item ${a.level}"><div class="alert-head"><span>${escapeHtml(status)} · ${escapeHtml(a.site)} · ${escapeHtml(conciseVpgName(a))}</span></div><p>${escapeHtml(description)}</p></div>`;
+  }
   async function handleFile(file,type){
     if(!file)return;
     if(!/\.csv$/i.test(file.name)&&file.type!=='text/csv'){toast('Please upload a CSV file.');return}
@@ -169,46 +241,52 @@
     const normal=rows.filter(r=>/^meeting sla$/i.test(r.protection));
     const exception=rows.filter(r=>!/^meeting sla$/i.test(r.protection));
     const nums=normal.map(r=>r.rpo).filter(Number.isFinite);
-    const range=nums.length?(Math.min(...nums)===Math.max(...nums)?`${Math.min(...nums)} second${Math.min(...nums)===1?'':'s'}`:`${Math.min(...nums)}-${Math.max(...nums)} seconds`):null;
-    let text;
-    if(normal.length){text=`${exception.length?'Most VPGs are':'VPGs are'} meeting SLA${range?' with Actual RPO of approximately '+range:''}.`}
-    else{text='VPG protection status requires review.'}
-    for(const row of exception){const rpo=Number.isFinite(row.rpo)?` with Actual RPO of ${row.rpo} seconds`:'';text+=` 1 VPG has a ${row.protection} (${row.name})${rpo}.`}
-    const currentAlerts=latestVpgAlerts().filter(a=>a.site===site);
-    const red=currentAlerts.filter(a=>a.level==='red').length;
-    const yellow=currentAlerts.filter(a=>a.level==='yellow').length;
-    if(red)text+=` ${red} VPG${red!==1?'s':''} ${red!==1?'have':'has'} a red alert.`;
-    if(yellow)text+=` ${yellow} VPG${yellow!==1?'s':''} ${yellow!==1?'have':'has'} a yellow alert.`;
+    const range=nums.length?rpoRange(nums,false):null;
+    let text=normal.length?`${exception.length?'Most VPGs are':'VPGs are'} meeting SLA${range?' with Actual RPO of approximately '+range:''}.`:'VPG protection status requires review.';
+    const currentRed=rows.filter(v=>v.level==='red');
+    const currentYellow=rows.filter(v=>v.level==='yellow');
+    if(currentRed.length)text+=` ${currentRed.length} VPG${currentRed.length===1?' has':'s have'} RED status in Zerto${currentRed.length===1?'':' (see affected VPGs below)'}.`;
+    if(currentYellow.length)text+=` ${currentYellow.length} VPG${currentYellow.length===1?' has':'s have'} YELLOW status in Zerto.`;
+    for(const row of exception){
+      const rpo=Number.isFinite(row.rpo)?` (Actual RPO ${duration(row.rpo)})`:row.rawRpo?` (Actual RPO ${row.rawRpo})`:'';
+      text+=` ${row.name}: ${row.protection}${rpo}.`;
+    }
     return text;
+  }
+  function shortIssue(description){
+    if(/reached its configured limit/i.test(description))return 'journal limit reached';
+    if(/journal history is less than 75%/i.test(description))return 'journal history below 75%';
+    if(/exceeds configured RPO/i.test(description))return 'RPO not meeting SLA';
+    return 'Zerto alert';
   }
   function reportHtml(){
     let html='<p>Hi Team, Good day.</p><p>Please see below the current status of the Zerto Virtual Machines (VMs) and Virtual Protection Groups (VPGs) for protection.</p>';
-    const bySite=sites(), allVpgAlerts=latestVpgAlerts();
-    for(const site of bySite){
+    const alerts=currentVpgAlerts();
+    for(const site of sites()){
       html+=`<div class="site-block"><p><b>Recovery Site: ${escapeHtml(site)}</b></p><p><b>Status:</b> ${escapeHtml(reportStatus(site))}</p>`;
-      const shot=state.images[site];if(shot)html+=`<img class="report-image" alt="Zerto status for ${escapeHtml(site)}" src="${shot}">`;
-      const alerts=allVpgAlerts.filter(a=>a.site===site);
-      if(!alerts.length){html+='<p>Alerts: None</p>'}
+      const shot=state.images[site];
+      if(shot)html+=`<img class="report-image" alt="Zerto status for ${escapeHtml(site)}" src="${shot}">`;
+      const siteAlerts=alerts.filter(a=>a.site===site);
+      if(!siteAlerts.length){html+='<p>Alerts: None</p>'}
       else{
-        for(const level of ['yellow','red']){
-          const batch=alerts.filter(a=>a.level===level);
-          for(let i=0;i<batch.length;i++)html+=`<p class="alert-line"><b>${level==='red'?'Red Alerts':'Yellow Alerts'}:</b> ${escapeHtml(batch[i].description)}</p>`;
+        for(const level of ['red','yellow']){
+          const status=level==='red'?'Red':'Yellow';
+          for(const a of siteAlerts.filter(v=>v.level===level)){
+            const detail=a.matched?a.description:
+              `${a.vpgName} has ${status} status in Zerto. No matching ${status.toLowerCase()} alert description was found in Monitoring Alert.csv; please verify in Zerto.`;
+            html+=`<p class="alert-line"><b>${status} Alerts:</b> ${escapeHtml(detail)}</p>`;
+          }
         }
       }
       html+='</div>';
     }
-    // Keep this a *summary*, not a second copy of all the full descriptions.
-    const {red,yellow}=alertTotals();
-    const count=red.length+yellow.length;
-    html+=`<p><b>Alert Summary:</b> ${count===0?'No VPG alerts.':`${red.length} Red Alert${red.length===1?'':'s'} and ${yellow.length} Yellow Alert${yellow.length===1?'':'s'} affecting ${count} VPG${count===1?'':'s'}.`}</p>`;
-    for(const [title,rows] of [['Red',red],['Yellow',yellow]]){
-      if(rows.length){
-        const names=rows.map(a=>`${a.site}: ${conciseVpgName(a)}`).join('; ');
-        html+=`<p><b>${title}:</b> ${escapeHtml(names)}</p>`;
-      }
-    }
-    html+='<p><b><i>Note: VPGs with Yellow/Orange alert status indicate as below.</i></b></p><p><i>Legend – VPG Alert Status Indicators</i></p>';
-    html+='<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:570px;border:1px solid #444;font-family:Arial,sans-serif;font-size:12px;background:#fff;color:#222"><thead><tr><th style="border:1px solid #444;text-align:left;padding:6px">Indicator</th><th style="border:1px solid #444;text-align:left;padding:6px">Status Description</th></tr></thead><tbody><tr><td style="border:1px solid #444;padding:6px">🟢 Green</td><td style="border:1px solid #444;padding:6px">VPG is being replicated, including syncing between sites</td></tr><tr><td style="border:1px solid #444;padding:6px">🟡 Yellow/Orange</td><td style="border:1px solid #444;padding:6px">VPG is being replicated, but with issues (e.g., RPO &gt; Target)</td></tr><tr><td style="border:1px solid #444;padding:6px">🔴 Red</td><td style="border:1px solid #444;padding:6px">VPG is not being replicated due to communication or other issues</td></tr></tbody></table>';
+    const red=alerts.filter(a=>a.level==='red');
+    const yellow=alerts.filter(a=>a.level==='yellow');
+    html+=`<p><b>Alert Summary:</b> ${red.length} Red VPG${red.length===1?'':'s'}, ${yellow.length} Yellow VPG${yellow.length===1?'':'s'}.</p>`;
+    if(red.length)html+=`<p><b>Red Alerts:</b> ${escapeHtml(red.map(a=>`${a.site}: ${conciseVpgName(a)} (${a.matched?shortIssue(a.description):'check alert details'})`).join('; '))}</p>`;
+    if(yellow.length)html+=`<p><b>Yellow Alerts:</b> ${escapeHtml(yellow.map(a=>`${a.site}: ${conciseVpgName(a)} (${a.matched?shortIssue(a.description):'check alert details'})`).join('; '))}</p>`;
+    html+='<p><i>Legend – VPG Status Indicators</i></p>';
+    html+='<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:570px;border:1px solid #444;font-family:Arial,sans-serif;font-size:12px;background:#fff;color:#222"><thead><tr><th style="border:1px solid #444;text-align:left;padding:6px">Indicator</th><th style="border:1px solid #444;text-align:left;padding:6px">Status Description</th></tr></thead><tbody><tr><td style="border:1px solid #444;padding:6px">🟢 Green</td><td style="border:1px solid #444;padding:6px">Healthy status in Zerto</td></tr><tr><td style="border:1px solid #444;padding:6px">🟡 Yellow/Orange</td><td style="border:1px solid #444;padding:6px">Warning reported; review the affected VPG</td></tr><tr><td style="border:1px solid #444;padding:6px">🔴 Red</td><td style="border:1px solid #444;padding:6px">Error reported; check Protection Status and active alerts before assessing replication health</td></tr></tbody></table>';
     html+='<p style="margin-top:16px">For questions or further clarifications regarding this report, please feel free to respond to this email.</p>';
     return html;
   }

@@ -191,6 +191,14 @@
         if (record) subject = HISTORY.makeSubject(subject,record);
       }
     }
+    // Prefix must agree with the service line. An MS ticket must never retain
+    // SANDZ-SI simply because the model picked an unrelated SI project row.
+    const service=(typeof MAUServiceLine!=='undefined'?MAUServiceLine:null);
+    const account=resolveAccount(incidentText||subject);
+    if(service&&(!account||!account.needsReview)){
+      const line=service.resolve(incidentText||subject,account);
+      subject=service.enforceSubject(subject,line.type);
+    }
     return subject;
   }
 
@@ -271,6 +279,15 @@
       update("SE's that can handle this ticket",decision.account.se);
       update("PM/SD of this account",decision.account.pmsd);
     }
+    const service=typeof MAUServiceLine!=='undefined'?MAUServiceLine:null;
+    const line=service?.resolve(incidentText,decision.account);
+    if(line?.type){
+      update("Solutions",line.type);
+      const existingSubject=extractValue(fields,"Subject");
+      if(existingSubject)update("Subject",service.enforceSubject(existingSubject,line.type));
+    } else if(line?.confidence==='mixed'){
+      changes.push('MS / SI service requires verification for this project');
+    }
     if (decision.drIncident) {
       update("Supported Portfolio",DR_PORTFOLIO);
       update("Ticket Category","Incident");
@@ -322,6 +339,14 @@
       // Zoho extension payload historically lacked Account Name; provide it.
       if (decision.account.account) fields["Account Name"] = decision.account.account;
       else fields["Account Name"] = "";
+    }
+    const service=typeof MAUServiceLine!=='undefined'?MAUServiceLine:null;
+    const line=service?.resolve(sourceText,decision.account);
+    if(line?.type){
+      fields['Solutions']=line.type;
+      if(fields['Subject'])fields['Subject']=service.enforceSubject(fields['Subject'],line.type);
+    } else if(line?.confidence==='mixed'){
+      payload.serviceLineWarning='Confirm whether this is an MS or SI project before creating the ticket.';
     }
     if (decision.drIncident) {
       fields["Supported Portfolio"] = DR_PORTFOLIO;

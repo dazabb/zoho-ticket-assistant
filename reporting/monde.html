@@ -83,6 +83,12 @@ body.theme-dark .date-input{color-scheme:dark}
 .results-content{padding-bottom:18px}.results .section{margin-top:15px}
 body.theme-dark .results{background:#22252a;border-color:#3c4149}body.theme-dark .results>summary{color:#dbe2ec}
 @media(max-width:720px){.top-grid{grid-template-columns:1fr}.page{padding:18px 14px}.file-grid{grid-template-columns:1fr}.hero h1{font-size:23px}}
+
+.mail-recipients{border:1px solid #dfe5ec;border-radius:9px;padding:15px 16px;margin-bottom:14px;background:#f8fafc;display:grid;gap:10px}
+.mail-recipients .heading{margin-bottom:0}.recipients-row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:10px;align-items:center}
+.recipients-row .field-label{margin-bottom:0}.recipients-row textarea{min-width:0;width:100%;resize:vertical;background:white;color:#263746;border:1px solid #cfd9e4;border-radius:7px;padding:8px 10px;line-height:1.45;font-size:12px}
+.recipients-row button{white-space:nowrap}.mail-recipients #saveRecipients{justify-self:end}body.theme-dark .mail-recipients{background:#292d35;border-color:#484f59}body.theme-dark .recipients-row textarea{background:#191d23;color:#fff;border-color:#505761}
+@media(max-width:580px){.recipients-row{grid-template-columns:30px minmax(0,1fr)}.recipients-row button{grid-column:2;justify-self:start}}
 </style>
 <script>
   window.addEventListener('message',function(event){
@@ -101,6 +107,11 @@ body.theme-dark .results{background:#22252a;border-color:#3c4149}body.theme-dark
     </div></section>
     <section class="card"><div class="heading"><h2>2. Generate</h2></div><div class="controls"><div><label class="field-label" for="reportDate">Report date</label><input class="date-input" id="reportDate" type="date"></div><button class="btn primary wide" id="generateBtn" disabled>Generate report</button><div id="sourceStatus" class="info">Upload both files.</div></div></section>
   </div>
+  <section class="card recipient-card"><div class="mail-recipients"><div class="heading"><h2>Recipients</h2><span id="recipientsStatus" class="mini"></span></div>
+  <div class="recipients-row"><label class="field-label" for="recipientTo">To</label><textarea id="recipientTo" rows="2" spellcheck="false" aria-label="Email recipients To"></textarea><button class="btn" id="copyTo" type="button">Copy To</button></div>
+  <div class="recipients-row"><label class="field-label" for="recipientCc">Cc</label><textarea id="recipientCc" rows="3" spellcheck="false" aria-label="Email recipients Cc"></textarea><button class="btn" id="copyCc" type="button">Copy Cc</button></div>
+  <button class="btn" id="saveRecipients" type="button">Save recipients</button>
+ </div></section>
   <details class="results hidden" id="results"><summary>View VPG details</summary><div class="results-content"><div class="heading"><h2>VPG status</h2></div><div class="numbers">
    <div class="stat"><span>Total VPGs</span><strong id="countTotal">—</strong></div><div class="stat green"><span>Healthy</span><strong id="countGreen">—</strong></div><div class="stat amber"><span>Warning</span><strong id="countYellow">—</strong></div><div class="stat red"><span>Error</span><strong id="countRed">—</strong></div>
   </div><div class="section"><div class="heading"><h2>Recovery sites</h2></div><div class="site-grid" id="siteGrid"></div></div><details class="details"><summary id="alertToggle">Review monitoring alerts</summary><div class="details-body"><div id="alertList" class="alert-list"></div><div id="zvmAlerts" class="alert-list" style="margin-top:12px"></div></div></details>

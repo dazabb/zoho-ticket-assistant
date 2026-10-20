@@ -1344,6 +1344,8 @@ Severity answer structure:
       overlay.style.display = "flex";
     }
     state.activeProfileId = "";
+    window.MAUActiveProfileId = 'guest';
+    window.dispatchEvent(new CustomEvent('mau:profilechange',{detail:{profileId:'guest'}}));
     state.bootProfileId = "";
     updateProfileStatusUi();
     updateDocumentTitle();
@@ -1411,6 +1413,8 @@ Severity answer structure:
 
     if (window.MAUUserGemini) window.MAUUserGemini.clearKey();
     state.activeProfileId = profile.id;
+    window.MAUActiveProfileId = profile.id;
+    window.dispatchEvent(new CustomEvent('mau:profilechange',{detail:{profileId:profile.id}}));
     state.bootProfileId = profile.id;
     state.fileHandle = null;
     state.latestFileName = "ticket-workspace.txt";
@@ -1446,6 +1450,8 @@ Severity answer structure:
     renderAttachmentTray();
     resetChatRuntime();
     state.activeProfileId = "";
+    window.MAUActiveProfileId = 'guest';
+    window.dispatchEvent(new CustomEvent('mau:profilechange',{detail:{profileId:'guest'}}));
     state.bootProfileId = "";
     state.history = [];
     state.historyIndex = -1;
@@ -2549,9 +2555,9 @@ Severity answer structure:
       account: profile.account,
       customer: resolved.customer,
       profileType: "mixed-fallback",
-      classification: newestRow ? newestRow.solution : typeList[0],
-      reason: "newest typed row fallback",
-      matchedRow: newestRow,
+      classification: "",
+      reason: "service not confirmed for mixed account",
+      matchedRow: null,
       typedRows: typedRows.length
     };
   }
@@ -2564,7 +2570,13 @@ Severity answer structure:
 
   function buildAccountClassificationPrompt(text) {
     const decision = getAccountClassificationDecision(text);
+    const service = window.MAUServiceLine?.resolve(text, null, decision);
+    if (service?.type) {
+      const customerLabel=service.customer || decision?.customer || '';
+      return `Verified service-line rule for this current ticket:\n- Use Solutions: ${service.type}.\n- Use subject prefix ${window.MAUServiceLine.PREFIX[service.type]}.\n- Customer: ${customerLabel}.\n- Evidence: ${service.reason}.\n- Do not substitute SI from a generic migration/maintenance keyword or from the newest account record.\n- If the source explicitly states another service or project, flag the conflict for review.`;
+    }
     if (!decision) return "";
+    if (!decision.classification) return "Service line MS or SI is not confirmed for this mixed-service account. Ask for the supported project/service before assigning a subject prefix or Solutions.";
 
     const prefix = decision.classification === "SI" ? "SANDZ-SI" : "SANDZ-MSDCO";
     const subjectCustomerLabel = getCanonicalSubjectCustomerLabel(decision.account, decision.customer);

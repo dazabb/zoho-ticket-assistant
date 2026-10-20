@@ -1,0 +1,6 @@
+MAU Operation Desk v2.2
+- Monde report selects the highest-priority alert matching each VPG's current health (Red first for a Red VPG).
+- Removes Latest Alert labels and older-alert commentary from customer email.
+- Displays one alert per current Red/Yellow VPG.
+- Final summary lists current Red/Yellow VPG counts and short issue tags only.
+- Keeps VPG report, Zoho table clipboard, Gemini, ticket workspace, Viber follow-up unchanged.
