@@ -87,7 +87,9 @@
   function setLocationDetails(doc, data) {
     const address = sanitizeText(String(data.location_address || "").trim());
     const store = sanitizeText(String(data.store_name || "").trim());
-    if (!store) return setCellValue(doc, "Location Address", address);
+    const company = sanitizeText(String(data.company_name || "").trim());
+    // The store/site appears in Company Name. Avoid showing it twice.
+    if (!store || store.toLowerCase() === company.toLowerCase()) return setCellValue(doc, "Location Address", address);
     const storeLine = `Store / Site: ${store}`;
     const success = setCellValue(doc, "Location Address", storeLine);
     if (!success || !address) return success;

@@ -154,10 +154,10 @@
     const normalizeKey = x => normalizeSpace(x).toLowerCase().replace(/[^a-z0-9]+/g, "");
     const issueKey = normalizeKey(issueDescription);
     const heading = /^(?:(?:proposed|requested|planned|required|onsite|on-site|field\s+engineer|engineer|technician|FE)?\s*(?:work\s*(?:scope|details|order|instructions|required|requested|activities|tasks)|scope\s*of\s*(?:work|service)|task(?:s|\s+list)?|activities|activity|action\s*(?:items|plan|required)|service\s*(?:required|request|activities)|job\s*(?:description|details)|work\s*to\s*(?:do|be\s+performed)|things\s*to\s*do|to\s*be\s*done)|please\s+(?:do|perform|carry\s+out)\s+(?:the\s+)?following(?:\s+(?:for|tasks))?|following\s+(?:tasks|activities|work)|engineer\s+task\s*\/\s*activity|perform\s+the\s+following)\s*:?\s*$/i;
-    const workVerb = /^(?:check|inspect|verify|test|fix|repair|replace|replaced|replacing|clean|wipe|install|upgrade|update|perform|conduct|configure|reconfigure|troubleshoot|resolve|restore|migrate|set\s*up|setup|connect|disconnect|remove|mount|unmount|provide|apply|change|adjust|reboot|restart|retrigger|validate|deploy|provision|assemble|relocate|reimage|image|take\s+(?:a\s+)?backup|run\s+(?:a\s+)?(?:test|diagnostic)|diagnose|troubleshoot|re-seat|reseat|replace\s+and\s+test|clean\s+and\s+inspect)\b/i;
+    const workVerb = /^(?:check|inspect|verify|test|fix|repair|replace|replaced|replacing|clean|wipe|install|upgrade|update|perform|conduct|configure|reconfigure|troubleshoot|resolve|restore|migrate|set\s*up|setup|connect|disconnect|remove|mount|unmount|provide|apply|change|adjust|reboot|restart|retrigger|validate|deploy|provision|stage|staging|assemble|relocate|reimage|image|take\s+(?:a\s+)?backup|run\s+(?:a\s+)?(?:test|diagnostic)|diagnose|troubleshoot|re-seat|reseat|replace\s+and\s+test|clean\s+and\s+inspect)\b/i;
     const nounWork = /\b(?:upgrade|replacement|preventive\s+maintenance|cable\s+management|reconfiguration|installation|troubleshooting|repair|restoration|migration|health\s+check|cleaning|maintenance\s+activity|data\s+transfer|software\s+update|cable\s+replacement|ssd\s*(?:&|and|\+)\s*ram)\b/i;
     const workIntent = /\b(?:please|kindly|request(?:ing|ed)?|need|needs|requires?|required|should|will|must|tasked\s+to|assigned\s+to|for\s+(?:our|the)\s+engineers?\s+to|technician\s+to|on.?site\s+engineer\s+to|scope\s+(?:is|includes?))\b/i;
-    const actionAnywhere = /\b(?:replace|upgrade|install|fix|repair|troubleshoot|inspect|clean|check|test|restore|configure|perform|migrate|reboot|restart|update|deploy|conduct|verify|reseat|re-seat|run|remove|setup|set\s+up|relocate|provision)\b/i;
+    const actionAnywhere = /\b(?:replace|upgrade|install|fix|repair|troubleshoot|inspect|clean|check|test|restore|configure|perform|migrate|reboot|restart|update|deploy|conduct|verify|reseat|re-seat|run|remove|setup|set\s+up|relocate|provision|stage|staging)\b/i;
     const stop = /^(?:store\b|branch\b|outlet\b|site\s*(?:name|address)?\s*:|serial\b|(?:service\s*)?address\s*:|please\s+contact\b|location\b|company\b|customer\b|client\b|contact\b|mobile\b|phone\b|city\b|province\b|required\s+date\b|created\s+date\b|customer\s+visit\b|ticket\s+(?:information|category|owner|closed)\b|issue\s+(?:category|description)\b|support\s+(?:agent|level)\b|assigned\s+engineer\b|priority\b|severity\b|from\s*:|to\s*:|cc\s*:|regards\b|best\s+regards\b|thank\s+you\b|current\s+state\b|my\s+pins\b|ticket\s+properties\b|job\s+done\b|resolution\b|conforme\b|customer\s+remarks\b|[-–—]{2,}\s*on\s+\w{3}\b|screenshot\s+for\b|kindly\s+bring\b|please\s+bring\b|(?:kindly|please)\s+provide\s+the\s+list\s+of\s+field\s+engineers\b|following\s+tools\b|tools\s+(?:for|to)\s+(?:this|bring)\b|list\s+of\s+tools\b|materials\s+(?:required|needed|to\s+bring)\b|checklist\s+of\s+tools\b|attachments?\b|reply\s+all\b|\w+@\w+\.|https?:\/\/)/i;
     const ignore = /^(?:ss|sl|gs|sa|j|[.·]|save|savecancel|cancel|reply\s+all|\d+\s+conversations?|time\s+entry|attachment|activity|approval|history|priority|status|open|closed|none|n\/a|\d{1,2}:\d{2}\s*[ap]m)$/i;
     const toolLine = /^(?:screwdriver|screw\s+for|empty\s+external\s+hard\s+drive|hdd\/ssd\s+enclosure|sata\s+cable|usb\s+flash\s+drive|crimper|rj45|twist\s+tie|thermal\s+paste|power\s+strip|multimeter|ladder)\b/i;
@@ -306,10 +306,10 @@
     const src=normalizeSource(text);
     const ticketNumber=findTicketNumber(src);
     const company=sectionCandidates(src,[
-      // The named Zoho account identifies the company contracting the service.
-      // A Customer Company Name such as GABC_OXYGEN identifies a brand or business unit.
-      // Do not overwrite "Golden ABC, Incorporated" with "GABC_OXYGEN".
-      {rx:/^Account\s*Name\s*\*?\s*[:=\-]?\s*(.*)$/i,score:195,label:'Zoho Account Name'},
+      // Account Name may identify the parent organisation, but employees use
+      // the actual store / branch / site as Company Name on a CSA. Treat
+      // customer company fields only as fallback when no work site is stated.
+      {rx:/^Account\s*Name\s*\*?\s*[:=\-]?\s*(.*)$/i,score:55,label:'Zoho Account Name'},
       {rx:/^Company\s*Name\s*[:=\-]\s*(.*)$/i,score:165,label:'Explicit Company Name'},
       {rx:/^(?:Customer\s*Company\s*Name|Customer\s*Company)\s*[:=\-]?\s*(.*)$/i,score:135,label:'Customer Company Name'},
       {rx:/^(?:Company\s*(?:Name)?|Client\s*(?:Name)?|Customer\s*(?:Name)?|End\s*User\s*(?:Name)?|Organization\s*(?:Name)?|Organisation\s*(?:Name)?|Business\s*(?:Name)?|Merchant\s*(?:Name)?|Retailer\s*(?:Name)?)\s*[:=\-]\s*(.*)$/i,score:105,label:'Company Name'},
@@ -318,7 +318,10 @@
     ]);
     const sites=sectionCandidates(src,[
       {rx:/^(?:Store|Branch|Outlet|Site|Shop|Office|Warehouse|Facility|Venue|Establishment|Installation\s*Site|Deployment\s*Site|Work\s*Site|Project\s*Site|Store\s*\/\s*Branch)(?:\s*(?:Name|Code|Location))?\s*[:=\-]\s*(.*)$/i,score:110,label:'Site Name'},
-      {rx:/^(?:Store|Branch|Outlet|Site|Shop|Office|Warehouse|Facility|Venue|Establishment|Installation\s*Site|Deployment\s*Site|Work\s*Site)(?:\s*Name)?\s*\*?$/i,score:90,label:'Site Name'}
+      {rx:/^(?:Store|Branch|Outlet|Site|Shop|Office|Warehouse|Facility|Venue|Establishment|Installation\s*Site|Deployment\s*Site|Work\s*Site)(?:\s*Name)?\s*\*?$/i,score:90,label:'Site Name'},
+      // Several service desks name the store in the customer request rather
+      // than as a formal field, e.g. "Please do the following for ...".
+      {rx:/^(?:Please|Kindly)\s+(?:do|perform|complete|carry\s+out)\s+the\s+following\s+(?:for|at)\s+(.+)$/i,score:85,label:'Requested Work Site'}
     ]);
     // Site is a location name, not a street address. Prefer explicit names;
     // skip Region/City values and actual street addresses as "site names".
@@ -326,26 +329,34 @@
       !/^(?:G\/?F|\d+(?:\/?F|\/F|\s*(?:st|nd|rd|th)\s*floor|\s+(?:street|st\.?|road|rd\.?|avenue|ave\.?|brgy\.?|barangay)))\b/i.test(c.value));
     const pickedSite=selectedValue(siteOptions);
     const storeName=pickedSite.value||"";
-    // Company and site are distinct; if the only known identity is a site,
-    // use it as a visible fallback rather than fabricating a parent company.
-    const pickedCompany=selectedValue(company);
-    let companyName=pickedCompany.value||"";
-    if (/\s*[-–]\s*Sandz\s*$/i.test(companyName)) companyName=companyName.replace(/\s*[-–]\s*Sandz\s*$/i,"");
-    if (!companyName && storeName) companyName=storeName;
-
-    // Keep the retail brand distinct from the registered parent company.
-    // Use an explicit Brand/Business Unit when provided. For a GABC_OXYGEN
-    // customer-company code, infer OXYGEN only if the matching store starts
-    // with OXYGEN; do not invent brands from arbitrary underscores.
-    const brandOptions=sectionCandidates(src,[
-      {rx:/^(?:Brand|Retail\s*Brand|Business\s*Unit|Trading\s*Name)\s*[:=\-]\s*(.*)$/i,score:120,label:'Brand'}
-    ]);
-    let brandName=selectedValue(brandOptions).value||'';
-    const companyCode=selectedValue(company.filter(c=>c.label==='Customer Company Name')).value||'';
-    const matchBrand=companyCode.match(/^GABC[_\-]([A-Z][A-Z\s-]{2,35})$/i);
-    if (!brandName && matchBrand && storeName.toLowerCase().startsWith(matchBrand[1].trim().toLowerCase()+' ')) {
-      brandName=matchBrand[1].trim().replace(/_/g,' ');
+    // The CSA's Company Name is the place receiving the engineer's visit,
+    // even when Zoho's Account Name is a legal parent organisation. If a
+    // ticket has no Store Name field, sometimes its title still states it.
+    const ls=lines(src);
+    const subjectSites=[];
+    for (let i=1;i<ls.length;i++) {
+      if (!/^Reply\s+All$/i.test(ls[i])) continue;
+      const before=ls.slice(Math.max(0,i-3),i).filter(Boolean).pop() || '';
+      const subject=before.split('\u007c')[0].trim();
+      if (!before.includes('|') || !subject || subject.length>110) continue;
+      const inferred=subject.replace(/^[^_]{2,35}_\s*/, '').trim();
+      if (inferred.length>=4 && !/^(?:sandez|tickets|all tickets)$/i.test(inferred)) {
+        subjectSites.push({value:inferred,score:78,index:i,label:'Ticket Subject Site'});
+      }
     }
+    const subjectSite=selectedValue(subjectSites).value||'';
+    const actualSite=storeName || subjectSite;
+    const pickedCompany=selectedValue(company);
+    let companyName=actualSite || pickedCompany.value || '';
+    if (/\s*[-–]\s*Sandz\s*$/i.test(companyName)) companyName=companyName.replace(/\s*[-–]\s*Sandz\s*$/i,'');
+
+    // Brand means an explicitly identified brand/manufacturer, not the
+    // Account Name, store name or a guess from a company code (GABC_OXYGEN).
+    // If none is stated, leave the CSA's Brand value blank.
+    const brandOptions=sectionCandidates(src,[
+      {rx:/^(?:Brand(?:\s*Name)?|Retail\s*Brand|Device\s*Brand|Equipment\s*Brand|Manufacturer|Make)\s*[:=\-]\s*(.*)$/i,score:120,label:'Brand'}
+    ]);
+    const brandName=selectedValue(brandOptions).value||'';
 
     const contactOptions=sectionCandidates(src,[
       {rx:/^(?:Contact\s*(?:Person|Name)?|Site\s*Contact|Store\s*Contact|On.?site\s*Contact|Person\s*in\s*Charge|PIC|Point\s*of\s*Contact|Attention\s*to|Contact\s*Person\s*Name)\s*[:=\-]\s*(.*)$/i,score:95,label:'Contact Name'}
@@ -460,7 +471,9 @@
 
     if (!String(d.ticket_number || "").replace(/\D/g, "")) warnings.push("Ticket number is missing.");
     if (!normalizeSpace(d.company_name)) warnings.push("Customer company is missing.");
-    if (normalizeSpace(d.company_name) && normalizeSpace(d.store_name) && normalizeSpace(d.company_name).toLowerCase() === normalizeSpace(d.store_name).toLowerCase()) warnings.push("Only a store or site name was found. Please confirm the company name.");
+    // The store/site IS the desired Company Name on this CSA; do not flag that
+    // as a mismatch. Flag only an unconfirmed fallback with no site information.
+    if (normalizeSpace(d.company_name) && !normalizeSpace(d.store_name) && /^GABC[_-]/i.test(d.company_name)) warnings.push("Please check the store or site name.");
     if (!normalizeSpace(d.location_address)) warnings.push("Full location address is missing or only a region was detected.");
     if (!normalizeSpace(d.visit_schedule)) warnings.push("Customer visit schedule was not detected.");
     if (!normalizeSpace(d.serial_number)) warnings.push("Serial number was not detected.");
