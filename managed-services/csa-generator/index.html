@@ -206,7 +206,8 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
         <div class="edit-content">
       <div class="grid two">
         <label>Ticket Number<input id="ticket_number" inputmode="numeric" autocomplete="off" /></label>
-        <label>Company / Store Name<input id="company_name" autocomplete="off" /></label>
+        <label>Company Name<input id="company_name" autocomplete="off" /></label>
+        <label>Store / Site / Branch<input id="store_name" autocomplete="off" placeholder="Store, office, warehouse or site name" /></label>
         <label>Contact Name<input id="contact_name" autocomplete="off" /></label>
         <label>Mobile Number<input id="mobile_number" autocomplete="off" /></label>
         <label>Customer Visit Schedule Date<input id="visit_schedule" placeholder="October 20, 2026 9:00 AM" autocomplete="off" /></label>
@@ -423,66 +424,73 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return normalizeSpace(String(value || "").replace(/^(?:[•●▪◦‣*]\s*|[-–—]\s+|\d+[.)]\s+)/, ""));
   }
 
-  // Read engineer activities from the actual customer request, including
-  // bulletless task lists directly beneath the original issue description.
-  // Do not mistake onsite tool-packing lists or service-desk replies for work.
+  // A work request can arrive as bullets, a paragraph, a form, or a forwarded
+  // email. Only extract work to be performed, never a list of tools to bring.
   function extractTasks(text, issueDescription = "") {
     const ls = lines(text);
-    const issue = normalizeSpace(issueDescription).toLowerCase();
-    const normalizedIssue = issue.replace(/[^a-z0-9]+/g, "");
-    const normalizedLine = value => normalizeSpace(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
-    const heading = /^(?:please\s+do\s+the\s+following(?:\s+for)?|following\s+tasks?|engineer\s+task\s*\/\s*activity|engineer\s+tasks?|scope\s+of\s+work|work\s+to\s+be\s+performed|requested\s+tasks?|requested\s+activities|onsite\s+activities|activities\s+to\s+perform|work\s+scope|action\s+items)\s*:?\s*$/i;
-    const explicitVerb = /^(?:check|inspect|verify|test|fix|repair|replace|replaced|replacing|clean|wipe|install|upgrade|update|perform|conduct|configure|reconfigure|troubleshoot|resolve|restore|migrate|setup|set\s+up|connect|disconnect|remove|mount|unmount|provide|apply|change|adjust|reboot|restart|retrigger|validate|deploy|provision|assemble|service|relocate|reimage|image|take\s+(?:a\s+)?backup|run\s+(?:a\s+)?(?:test|diagnostic))\b/i;
-    const nounWork = /\b(?:upgrade|replacement|preventive\s+maintenance|cable\s+management|reconfiguration|installation|troubleshooting|repair|restoration|migration|health\s+check|cleaning|maintenance\s+activity)\b/i;
-    const stop = /^(?:store\s+name\s*:|serial\s*(?:#|number)\s*:|address\s*:|please\s+contact\b|location\s+address\b|company\s+name\b|contact\s+name\b|mobile\s+number\b|site\s+contact\b|it\s+contact\b|required\s+date\b|created\s+date\b|customer\s+visit\b|ticket\s+(?:information|category|owner|closed)\b|issue\s+(?:category|description)\b|support\s+(?:agent|level)\b|assigned\s+engineer\b|priority\b|severity\s+level\b|from\b\s*:|to\b\s*:|cc\b\s*:|regards\b|best\s+regards\b|thank\s+you\b|current\s+state\b|my\s+pins\b|ticket\s+properties\b|job\s+done\b|resolution\b|conforme\b|customer\s+remarks\b|[\-–—]{2,}\s*on\s+\w{3}\b|screenshot\s+for\b|kindly\s+bring\b|please\s+bring\b|(?:kindly|please)\s+provide\s+the\s+list\s+of\s+field\s+engineers\b|following\s+tools\b|tools\s+(?:for|to)\s+(?:this|bring)\b)/i;
+    const normalizeKey = x => normalizeSpace(x).toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const issueKey = normalizeKey(issueDescription);
+    const heading = /^(?:(?:proposed|requested|planned|required|onsite|on-site|field\s+engineer|engineer|technician|FE)?\s*(?:work\s*(?:scope|details|order|instructions|required|requested|activities|tasks)|scope\s*of\s*(?:work|service)|task(?:s|\s+list)?|activities|activity|action\s*(?:items|plan|required)|service\s*(?:required|request|activities)|job\s*(?:description|details)|work\s*to\s*(?:do|be\s+performed)|things\s*to\s*do|to\s*be\s*done)|please\s+(?:do|perform|carry\s+out)\s+(?:the\s+)?following(?:\s+(?:for|tasks))?|following\s+(?:tasks|activities|work)|engineer\s+task\s*\/\s*activity|perform\s+the\s+following)\s*:?\s*$/i;
+    const workVerb = /^(?:check|inspect|verify|test|fix|repair|replace|replaced|replacing|clean|wipe|install|upgrade|update|perform|conduct|configure|reconfigure|troubleshoot|resolve|restore|migrate|set\s*up|setup|connect|disconnect|remove|mount|unmount|provide|apply|change|adjust|reboot|restart|retrigger|validate|deploy|provision|assemble|relocate|reimage|image|take\s+(?:a\s+)?backup|run\s+(?:a\s+)?(?:test|diagnostic)|diagnose|troubleshoot|re-seat|reseat|replace\s+and\s+test|clean\s+and\s+inspect)\b/i;
+    const nounWork = /\b(?:upgrade|replacement|preventive\s+maintenance|cable\s+management|reconfiguration|installation|troubleshooting|repair|restoration|migration|health\s+check|cleaning|maintenance\s+activity|data\s+transfer|software\s+update|cable\s+replacement|ssd\s*(?:&|and|\+)\s*ram)\b/i;
+    const workIntent = /\b(?:please|kindly|request(?:ing|ed)?|need|needs|requires?|required|should|will|must|tasked\s+to|assigned\s+to|for\s+(?:our|the)\s+engineers?\s+to|technician\s+to|on.?site\s+engineer\s+to|scope\s+(?:is|includes?))\b/i;
+    const actionAnywhere = /\b(?:replace|upgrade|install|fix|repair|troubleshoot|inspect|clean|check|test|restore|configure|perform|migrate|reboot|restart|update|deploy|conduct|verify|reseat|re-seat|run|remove|setup|set\s+up|relocate|provision)\b/i;
+    const stop = /^(?:store\b|branch\b|outlet\b|site\s*(?:name|address)?\s*:|serial\b|(?:service\s*)?address\s*:|please\s+contact\b|location\b|company\b|customer\b|client\b|contact\b|mobile\b|phone\b|city\b|province\b|required\s+date\b|created\s+date\b|customer\s+visit\b|ticket\s+(?:information|category|owner|closed)\b|issue\s+(?:category|description)\b|support\s+(?:agent|level)\b|assigned\s+engineer\b|priority\b|severity\b|from\s*:|to\s*:|cc\s*:|regards\b|best\s+regards\b|thank\s+you\b|current\s+state\b|my\s+pins\b|ticket\s+properties\b|job\s+done\b|resolution\b|conforme\b|customer\s+remarks\b|[-–—]{2,}\s*on\s+\w{3}\b|screenshot\s+for\b|kindly\s+bring\b|please\s+bring\b|(?:kindly|please)\s+provide\s+the\s+list\s+of\s+field\s+engineers\b|following\s+tools\b|tools\s+(?:for|to)\s+(?:this|bring)\b|list\s+of\s+tools\b|materials\s+(?:required|needed|to\s+bring)\b|checklist\s+of\s+tools\b|attachments?\b|reply\s+all\b|\w+@\w+\.|https?:\/\/)/i;
     const ignore = /^(?:ss|sl|gs|sa|j|[.·]|save|savecancel|cancel|reply\s+all|\d+\s+conversations?|time\s+entry|attachment|activity|approval|history|priority|status|open|closed|none|n\/a|\d{1,2}:\d{2}\s*[ap]m)$/i;
-    const toolLine = /^(?:screwdriver|screw\s+for|empty\s+external\s+hard\s+drive|hdd\/ssd\s+enclosure|sata\s+cable|usb\s+flash\s+drive|crimper|rj45|twist\s+tie|thermal\s+paste)\b/i;
-
+    const toolLine = /^(?:screwdriver|screw\s+for|empty\s+external\s+hard\s+drive|hdd\/ssd\s+enclosure|sata\s+cable|usb\s+flash\s+drive|crimper|rj45|twist\s+tie|thermal\s+paste|power\s+strip|multimeter|ladder)\b/i;
     const candidates = [];
-    function harvest(start, mode) {
+    function taskLike(value, raw, mode) {
+      const bullet = /^(?:[•●▪◦‣*]\s*|[-–—]\s+|\d+[.)]\s+)/.test(raw);
+      if (workVerb.test(value) || nounWork.test(value)) return true;
+      // Bullets under a work heading may be phrased as nouns ("RAM module replacement").
+      return Boolean(bullet && mode !== "task-list" && value.length < 150 && !/^(?:note|remark|date|time|ticket|phone|contact|serial|location)\b/i.test(value));
+    }
+    function harvest(start, mode, firstInline = "") {
       const tasks = [];
       let blanks = 0;
-      for (let j = start; j < ls.length && j < start + 28; j++) {
-        const raw = ls[j];
-        if (!raw) {
-          if (++blanks >= 3 && tasks.length) break;
-          continue;
-        }
+      const options = firstInline ? [{raw:firstInline, index:start-1}].concat(ls.slice(start, start + 30).map((raw, i)=>({raw,index:start+i}))) : ls.slice(start,start+30).map((raw,i)=>({raw,index:start+i}));
+      for (const {raw} of options) {
+        if (!raw) { if (++blanks >= 3 && tasks.length) break; continue; }
         blanks = 0;
         const value = cleanTask(raw);
         if (!value) continue;
-        if (stop.test(value) || toolLine.test(value) || heading.test(value)) break;
-        if (ignore.test(value) || /^\b(?:kindly\s+inform|please\s+inform|we\s+received|we\s+will|as\s+advised|this\s+message|site\s*id\s*:|https?:\/\/)\b/i.test(value)) break;
-        const bullet = /^(?:[•●▪◦‣*]\s*|[-–—]\s+|\d+[.)]\s+)/.test(raw);
-        const taskLike = explicitVerb.test(value) || nounWork.test(value) || bullet;
-        // Unlabelled lists must look like engineer work, not ticket metadata.
-        if (!taskLike) break;
-        if (value.length > 240) break;
-        if (tasks[tasks.length - 1] !== value) tasks.push(value);
+        if (stop.test(value) || toolLine.test(value) || heading.test(value) || ignore.test(value)) break;
+        if (/^(?:kindly\s+inform|please\s+inform|we\s+received|we\s+will\s+coordinate|as\s+advised|this\s+message|site\s*id\s*:|\s*https?:\/\/)/i.test(value)) break;
+        if (value.length > 260 || !taskLike(value, raw, mode)) break;
+        if (!tasks.some(x => normalizeKey(x) === normalizeKey(value))) tasks.push(value);
       }
       if (tasks.length) candidates.push({tasks, start, mode});
     }
-
-    for (let i = 0; i < ls.length; i++) {
-      if (heading.test(ls[i])) harvest(i + 1, "heading");
-      // Zoho copies repeat the issue description in the Properties pane and in
-      // the original customer message. Only the latter has a genuine work list.
-      if (normalizedIssue && normalizedIssue.length >= 12 && normalizedLine(ls[i]) === normalizedIssue) {
-        harvest(i + 1, "original-request");
-      }
-    }
-    // Some customer emails provide task lists but no scope heading. Only accept
-    // two or more consecutive work-like lines, never a packing/tools list.
+    ls.forEach((raw, i) => {
+      if (heading.test(raw)) harvest(i+1,'heading');
+      const colon = raw.match(/^([^:]{3,62}):\s*(.+)$/);
+      if (colon && heading.test(colon[1])) harvest(i+1,'heading',colon[2]);
+      if (issueKey.length >= 12 && normalizeKey(raw) === issueKey) harvest(i+1,'original-request');
+    });
+    // Bare lists and work paragraphs occur often in the oldest customer reply.
+    // Prefer a consecutive list, or a *clearly worded* requested work sentence.
     if (!candidates.length) {
-      for (let i = 0; i < ls.length; i++) {
-        if (explicitVerb.test(ls[i]) || nounWork.test(ls[i])) harvest(i, "task-list");
+      ls.forEach((raw,i) => {
+        if (workVerb.test(raw) || nounWork.test(raw)) harvest(i,'task-list');
+      });
+    }
+    const paragraphs = [];
+    for (let i = 0; i < ls.length; i++) {
+      const raw = ls[i];
+      if (!raw || raw.length > 370 || stop.test(raw) || /^\s*(?:[-•*]|\d+[.)])\s/.test(raw) || /^\s*(?:Original\s+Message|From|To|Cc|Subject)\s*:/i.test(raw)) continue;
+      if (/(?:please|kindly|request(?:ing|ed)?|need|requires?|scope\s+(?:is|includes?)|we\s+(?:would\s+like|need))\b/i.test(raw) && actionAnywhere.test(raw) && workIntent.test(raw)) {
+        let value = raw.replace(/^(?:please|kindly)\s*/i, "");
+        value = value.replace(/^(?:we\s+(?:would\s+like|need)|we\s+are\s+requesting|request(?:ing|ed)?|need|needs)\s+(?:(?:an?|the|our)\s+)?(?:(?:field|onsite|on-site)\s+)?(?:technician|engineer|FE)?\s*(?:to|for)?\s*/i, "");
+        value = normalizeSpace(value);
+        if (value.length >= 12 && actionAnywhere.test(value) && !/\b(?:bring|tools|prepare\s+the\s+equipment)\b/i.test(value)) paragraphs.push({tasks:[value],start:i,mode:'paragraph'});
       }
     }
-    // Prefer the longest supported scope; on a tie prefer the original request
-    // found later in Zoho's reverse-chronological conversation history.
-    candidates.sort((a, b) => b.tasks.length - a.tasks.length || b.start - a.start);
-    const best = candidates[0];
-    if (!best || (best.mode === "task-list" && best.tasks.length < 2)) return [];
+    candidates.push(...paragraphs);
+    // Work in the original issue is more reliable than recent support replies.
+    candidates.sort((a,b) => b.tasks.length-a.tasks.length ||
+      ({'original-request':3,'heading':2,'task-list':1,'paragraph':0}[b.mode] - {'original-request':3,'heading':2,'task-list':1,'paragraph':0}[a.mode]) || b.start-a.start);
+    const best = candidates.find(c => c.mode !== "task-list" || c.tasks.length >= 2);
+    if (!best) return [];
     return best.tasks;
   }
 
@@ -529,55 +537,124 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return candidates;
   }
 
-  function extractTicketData(text) {
-    const src = normalizeSource(text);
-    const ticketNumber = findTicketNumber(src);
-
-    const stores = allRegex(/^\s*Store\s+Name\s*:\s*(.+?)\s*$/gim, src);
-    // Use Zoho Customer Company Name for the CSA company field; store name is a fallback.
-    const mappedCompany = fieldAfterLabel(src, ["Customer Company Name", "Company Name"]);
-    const companyName = validValue(mappedCompany) ? mappedCompany : (stores[stores.length - 1] || "");
-
-    const contacts = allRegex(/Please\s+contact\s+([^\n]+?)\s+for\s+any\s+questions/gi, src);
-    const contactName = contacts.length ? contacts[contacts.length - 1] : fieldAfterLabel(src, ["Contact Name"]);
-
-    let mobile = fieldAfterLabel(src, ["Mobile Number"]);
-    if (!/\d{7,}/.test(mobile || "")) {
-      const phoneMatches = [...src.matchAll(/(?:IT\s+Contact\s+person|Contact\s+person)[^\n]*?((?:\+?63|0)\d(?:[\d\s()-]*\d))/gi)];
-      mobile = phoneMatches.length ? phoneMatches[phoneMatches.length - 1][1] : "";
+  // Field names differ between Zoho layouts, customers and forwarded emails.
+  // Match known synonyms and score candidates; do not take address lines from
+  // sender signatures, unrelated quoted ticket lists, or tool inventories.
+  function sectionCandidates(src, labelConfigs) {
+    const ls = lines(src);
+    const candidates = [];
+    const genericBadValue = /^(?:tickets|analytics|customers|reply\s+all|ticket\s+properties|contact\s+info|customer\s+information|ticket\s+information|issue\s+category|issue\s+description|status|open|closed|savecancel|email|phone|mobile|country|profile|ss|sl|sa|\w+@\w+\.|https?:\/\/)/i;
+    for (let i = 0; i < ls.length; i++) {
+      const raw = ls[i];
+      if (!raw || raw.length > 260) continue;
+      for (const {rx,score,label} of labelConfigs) {
+        const m=raw.match(rx);
+        if (!m) continue;
+        const inline=normalizeSpace(m[1] || "");
+        let value = inline || nextMeaningful(ls,i+1);
+        if (!value || !validValue(value) || genericBadValue.test(value)) continue;
+        if (value.length > 190 || value.includes('@') || /^(?:\d{1,2}\s+(?:conversations|time\s+entry))\b/i.test(value)) continue;
+        if (!inline && i + 1 < ls.length && /^\w[^:]{1,35}:\s*/.test(ls[i+1])) continue;
+        // A signature often contains the company address of the support agent;
+        // ignore unqualified generic address labels below a "Best Regards".
+        const context=ls.slice(Math.max(0,i-4),i).join(" ");
+        const nearSignature=/\b(?:Best\s+Regards|Thank\s+you\s+and\s+regards|This\s+email\s+and\s+files|CONFIDENTIALITY\s+NOTICE)\b/i.test(context);
+        const isZoho= /Customer\s+Information|Ticket\s+Properties|Account\s+Name/i.test(ls.slice(Math.max(0,i-15),i).join(" "));
+        candidates.push({value,score:score-(nearSignature?85:0)+(isZoho && /Customer\s+Company|Account\s+Name/i.test(label||'')?10:0),index:i,label});
+      }
     }
-    mobile = mobile ? normalizeSpace(mobile).replace(/[^+\d]/g, "") : "";
-    if (["0", "+0"].includes(mobile)) mobile = "";
+    return candidates;
+  }
 
-    const schedules = scheduleCandidates(src);
-    const visitSchedule = schedules.length ? schedules[0].value : "";
+  function selectedValue(candidates) {
+    if (!candidates.length) return {value:"",label:""};
+    candidates.sort((a,b)=>b.score-a.score || b.index-a.index);
+    return candidates[0];
+  }
 
-    const addresses = allRegex(/^\s*Address\s*:\s*(.+?)\s*$/gim, src);
-    let locationAddress = addresses.length ? addresses[addresses.length - 1] : fieldAfterLabel(src, ["Location Address", "Customer Location Address"]);
-    if (REGION_ONLY.has((locationAddress || "").toUpperCase())) locationAddress = "";
-    locationAddress = normalizeSpace((locationAddress || "").replace(/^Stall\s*#\s*:\s*/i, ""));
+  function addressLooksReal(value) {
+    const v=normalizeSpace(value);
+    if (!v || REGION_ONLY.has(v.toUpperCase()) || /^(?:philippines|manila|cebu|laguna|metro\s+manila|ncr|city|province)$/i.test(v)) return false;
+    if (/@|https?:\/\/|ticket\s*#|kindly|please\s+inform/i.test(v)) return false;
+    return v.length >= 8 && /[a-z]{2}/i.test(v);
+  }
 
-    const ticketCategory = fieldAfterLabel(src, ["Ticket Category", "Ticket Category*"]);
-    const issueCategory = fieldAfterLabel(src, ["Issue Category", "Issue Category*"]);
-    const issueDescription = fieldAfterLabel(src, ["Issue Description"]);
+  function extractTicketData(text) {
+    const src=normalizeSource(text);
+    const ticketNumber=findTicketNumber(src);
+    const company=sectionCandidates(src,[
+      {rx:/^(?:Customer\s*Company\s*Name|Customer\s*Company)\s*[:=\-]?\s*(.*)$/i,score:135,label:'Customer Company Name'},
+      {rx:/^(?:Company\s*(?:Name)?|Client\s*(?:Name)?|Customer\s*(?:Name)?|End\s*User\s*(?:Name)?|Organization\s*(?:Name)?|Organisation\s*(?:Name)?|Business\s*(?:Name)?|Merchant\s*(?:Name)?|Account\s*Name|Retailer\s*(?:Name)?)\s*[:=\-]\s*(.*)$/i,score:105,label:'Company Name'},
+      {rx:/^(?:Account\s*Name|Company\s*Name|Client\s*Name|Customer\s*Name|End\s*User|Organization\s*Name|Merchant\s*Name)\s*\*?\s*$/i,score:96,label:'Account Name'},
+      {rx:/^(?:for\s+customer|on\s+behalf\s+of|client\s+is)\s+(.+)$/i,score:45,label:'Customer'}
+    ]);
+    const sites=sectionCandidates(src,[
+      {rx:/^(?:Store|Branch|Outlet|Site|Shop|Office|Warehouse|Facility|Venue|Establishment|Installation\s*Site|Deployment\s*Site|Work\s*Site|Project\s*Site|Store\s*\/\s*Branch)(?:\s*(?:Name|Code|Location))?\s*[:=\-]\s*(.*)$/i,score:110,label:'Site Name'},
+      {rx:/^(?:Store|Branch|Outlet|Site|Shop|Office|Warehouse|Facility|Venue|Establishment|Installation\s*Site|Deployment\s*Site|Work\s*Site)(?:\s*Name)?\s*\*?$/i,score:90,label:'Site Name'}
+    ]);
+    // Site is a location name, not a street address. Prefer explicit names;
+    // skip Region/City values and actual street addresses as "site names".
+    const siteOptions=sites.filter(c=>!REGION_ONLY.has(c.value.toUpperCase()) &&
+      !/^(?:G\/?F|\d+(?:\/?F|\/F|\s*(?:st|nd|rd|th)\s*floor|\s+(?:street|st\.?|road|rd\.?|avenue|ave\.?|brgy\.?|barangay)))\b/i.test(c.value));
+    const pickedSite=selectedValue(siteOptions);
+    const storeName=pickedSite.value||"";
+    // Company and site are distinct; if the only known identity is a site,
+    // use it as a visible fallback rather than fabricating a parent company.
+    const pickedCompany=selectedValue(company);
+    let companyName=pickedCompany.value||"";
+    if (/\s*[-–]\s*Sandz\s*$/i.test(companyName)) companyName=companyName.replace(/\s*[-–]\s*Sandz\s*$/i,"");
+    if (!companyName && storeName) companyName=storeName;
 
-    const serials = allRegex(/^\s*Serial\s*#\s*:\s*([^\n]+)/gim, src);
-    let serialNumber = serials.length ? serials[serials.length - 1] : fieldAfterLabel(src, ["Serial Number"]);
-    serialNumber = validValue(serialNumber) ? normalizeSpace(serialNumber) : "";
+    const contactOptions=sectionCandidates(src,[
+      {rx:/^(?:Contact\s*(?:Person|Name)?|Site\s*Contact|Store\s*Contact|On.?site\s*Contact|Person\s*in\s*Charge|PIC|Point\s*of\s*Contact|Attention\s*to|Contact\s*Person\s*Name)\s*[:=\-]\s*(.*)$/i,score:95,label:'Contact Name'}
+    ]);
+    const contacts=allRegex(/Please\s+contact\s+([^\n]+?)\s+for\s+any\s+questions/gi,src);
+    const contactName=contacts.length?contacts[contacts.length-1]:(selectedValue(contactOptions).value || fieldAfterLabel(src,['Contact Name']));
 
+    let mobile=fieldAfterLabel(src,['Mobile Number','Contact Number','Contact Mobile','Phone Number','Cellphone','Telephone']);
+    if(!/\d{7,}/.test(mobile||'')) {
+      const phoneMatches=[...src.matchAll(/(?:IT\s+Contact\s+person|Contact\s+person)[^\n]*?((?:\+?63|0)\d(?:[\d\s()-]*\d))/gi)];
+      mobile=phoneMatches.length?phoneMatches[phoneMatches.length-1][1]:'';
+    }
+    mobile=mobile?normalizeSpace(mobile).replace(/[^+\d]/g,''):'';
+    if(['0','+0'].includes(mobile)) mobile='';
+    const schedules=scheduleCandidates(src);
+    const visitSchedule=schedules.length?schedules[0].value:'';
+
+    const addressOptions=sectionCandidates(src,[
+      {rx:/^(?:Customer\s*Location\s*Address|Complete\s*Site\s*Address|Site\s*Address|Store\s*Address|Branch\s*Address|Service\s*Address|On.?site\s*Address|Full\s*Address|Installation\s*Address|Office\s*Address|Outlet\s*Address|Work\s*Location|Location\s*Address|Delivery\s*Address|Physical\s*Address|Location\s*Details|Address\s*of\s*Site)\s*[:=\-]?\s*(.*)$/i,score:145,label:'Location Address'},
+      {rx:/^(?:Location|Service\s*Location|Site\s*Location|Store\s*Location|Branch\s*Location|Venue|Address|Where|Place)(?:\s*(?:of\s*work|for\s*service))?\s*[:=\-]\s*(.*)$/i,score:116,label:'Address'},
+      {rx:/^(?:Customer\s*Location\s*Address|Location\s*Address|Site\s*Address|Full\s*Address|Address|Service\s*Location)\s*\*?$/i,score:97,label:'Address'},
+      {rx:/^(?:Located\s+at|Situated\s+at|Our\s+store\s+is\s+at|The\s+site\s+is\s+at|Service\s+at)\s+(.+)$/i,score:76,label:'Address'}
+    ]).filter(c=>addressLooksReal(c.value));
+    // Generic street address in a signature is often AMTI/SANDZ's office;
+    // prefer the customer's explicit service/site address above it.
+    let locationAddress=selectedValue(addressOptions).value||'';
+    locationAddress=normalizeSpace(locationAddress.replace(/^Stall\s*#\s*:\s*/i,''));
+
+    const ticketCategory=fieldAfterLabel(src,['Ticket Category','Ticket Category*']);
+    const issueCategory=fieldAfterLabel(src,['Issue Category','Issue Category*']);
+    let issueDescription=fieldAfterLabel(src,['Issue Description','Problem Description','Concern','Reported Problem','Issue/Request']);
+    if(!validValue(issueDescription)) issueDescription='';
+    const serialOptions=sectionCandidates(src,[
+      {rx:/^(?:Serial\s*(?:Number|No\.?|#)|S\/?N|Service\s*Tag|Asset\s*Serial|Device\s*Serial)\s*[:=\-]\s*(.*)$/i,score:100,label:'Serial Number'}
+    ]);
+    const serialNumber=normalizeSpace(selectedValue(serialOptions).value || fieldAfterLabel(src,['Serial Number']));
+    const serial=validValue(serialNumber)?serialNumber:'';
     return {
-      ticket_number: ticketNumber,
-      company_name: normalizeSpace(companyName),
-      contact_name: normalizeSpace(contactName),
-      mobile_number: mobile,
-      visit_schedule: visitSchedule,
-      created_date: todayPH(),
-      location_address: locationAddress,
-      ticket_category: validValue(ticketCategory) ? normalizeSpace(ticketCategory) : "",
-      issue_category: validValue(issueCategory) ? normalizeSpace(issueCategory) : "",
-      issue_description: validValue(issueDescription) ? normalizeSpace(issueDescription) : "",
-      serial_number: serialNumber,
-      engineer_tasks: extractTasks(src, issueDescription)
+      ticket_number:ticketNumber,
+      company_name:normalizeSpace(companyName),
+      store_name:normalizeSpace(storeName),
+      contact_name:normalizeSpace(contactName),
+      mobile_number:mobile,
+      visit_schedule:visitSchedule,
+      created_date:todayPH(),
+      location_address:locationAddress,
+      ticket_category:validValue(ticketCategory)?normalizeSpace(ticketCategory):'',
+      issue_category:validValue(issueCategory)?normalizeSpace(issueCategory):'',
+      issue_description:issueDescription,
+      serial_number:serial,
+      engineer_tasks:extractTasks(src,issueDescription)
     };
   }
 
@@ -639,7 +716,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const d = data || {};
 
     if (!String(d.ticket_number || "").replace(/\D/g, "")) warnings.push("Ticket number is missing.");
-    if (!normalizeSpace(d.company_name)) warnings.push("Company / Store Name is missing.");
+    if (!normalizeSpace(d.company_name)) warnings.push("Customer company is missing.");
+    if (normalizeSpace(d.company_name) && normalizeSpace(d.store_name) && normalizeSpace(d.company_name).toLowerCase() === normalizeSpace(d.store_name).toLowerCase()) warnings.push("Only a store or site name was found. Please confirm the company name.");
     if (!normalizeSpace(d.location_address)) warnings.push("Full location address is missing or only a region was detected.");
     if (!normalizeSpace(d.visit_schedule)) warnings.push("Customer visit schedule was not detected.");
     if (!normalizeSpace(d.serial_number)) warnings.push("Serial number was not detected.");
@@ -650,7 +728,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       warnings.push("Visit schedule contains copied email/UI text and should be reviewed.");
     }
 
-    const allText = [d.company_name, d.contact_name, d.location_address, d.issue_description, d.serial_number]
+    const allText = [d.company_name, d.store_name, d.contact_name, d.location_address, d.issue_description, d.serial_number]
       .concat(Array.isArray(d.engineer_tasks) ? d.engineer_tasks : [])
       .join(" ");
     if (/[^\x00-\x7F]/.test(allText)) notes.push("Unicode/special characters detected and will be preserved in the DOCX.");
@@ -671,7 +749,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     parseScheduleFragment
   };
 })();
-
   </script>
   <script>
 (() => {
@@ -757,6 +834,56 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     for (let i = 2; i < paras.length; i++) if (textOf(paras[i]).trim()) setParagraphText(doc, paras[i], "", true);
     return true;
   }
+  // Show the store / branch separately from the customer company.
+  // The original AMTI CSA template has no independent Store Name cell,
+  // so display it above the street address inside Location Address.
+  function setLocationDetails(doc, data) {
+    const address = sanitizeText(String(data.location_address || "").trim());
+    const store = sanitizeText(String(data.store_name || "").trim());
+    if (!store) return setCellValue(doc, "Location Address", address);
+    const storeLine = `Store / Site: ${store}`;
+    const success = setCellValue(doc, "Location Address", storeLine);
+    if (!success || !address) return success;
+    const cell = findCellByLabel(doc, "Location Address");
+    const p = cell && directChildren(cell, "p")[0];
+    if (!p) return success;
+    const runs = directChildren(p, "r");
+    const valueRun = runs[runs.length - 1];
+    if (!valueRun) return success;
+    // Use a real Word line break rather than a newline inside w:t.
+    // Avoid repeating the store if someone also entered it in the address field.
+    if (address.toLowerCase() === store.toLowerCase() || address.toLowerCase() === storeLine.toLowerCase()) return success;
+    valueRun.appendChild(newElement(doc, "br"));
+    const addressText = newElement(doc, "t");
+    addressText.textContent = address;
+    valueRun.appendChild(addressText);
+    return success;
+  }
+  // When a longer store name and the engineer scope are both present, keep
+  // the signature and customer remarks together on the first CSA page.
+  // Only reduce blank write-in space, never the scope of work or actual text.
+  function compactEmptyResolutionSpace(doc) {
+    const mainTable = descendants(doc, "tbl")[0];
+    if (!mainTable) return;
+    const rows = directChildren(mainTable, "tr");
+    const headingIndex = rows.findIndex(row => /JOB DONE\s*\/\s*RESOLUTION/i.test(textOf(row)));
+    if (headingIndex < 0 || !rows[headingIndex + 1]) return;
+    const spacerRow = rows[headingIndex + 1];
+    if (textOf(spacerRow).trim()) return; // never shrink filled resolution details
+    // The template contains eleven empty paragraphs in this write-in space.
+    // Keep several useful lines but avoid pushing Customer Remarks off-page.
+    for (const cell of directChildren(spacerRow, "tc")) {
+      const blanks = directChildren(cell, "p");
+      if (blanks.some(par => textOf(par).trim())) continue;
+      for (let i = blanks.length - 1; i >= 4; i--) cell.removeChild(blanks[i]);
+    }
+    const trPr = directChildren(spacerRow, "trPr")[0];
+    const trHeight = trPr && directChildren(trPr, "trHeight")[0];
+    if (trHeight) {
+      const existing = Number(trHeight.getAttributeNS(W_NS, "val"));
+      if (existing > 1750) trHeight.setAttributeNS(W_NS, "val", "1750");
+    }
+  }
   function setTicketId(xmlDoc, ticketNumber) {
     for (const p of descendants(xmlDoc, "p")) {
       const all = textOf(p);
@@ -826,7 +953,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     setCellValue(doc, "Mobile Number", data.mobile_number || "");
     setCellValue(doc, "Created Date/Time", data.created_date || "");
     setCellValue(doc, "Customer Visit Schedule Date", data.visit_schedule || "");
-    setCellValue(doc, "Location Address", data.location_address || "");
+    setLocationDetails(doc, data);
     setCellValue(doc, "Ticket Category", data.ticket_category || "");
     setCellValue(doc, "Issue Category", data.issue_category || "");
     setCellValue(doc, "Issue Description", data.issue_description || "");
@@ -834,6 +961,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     setCellValue(doc, "Support Agent", "");
     setCellValue(doc, "Assigned Engineer", "");
     setTasks(doc, Array.isArray(data.engineer_tasks) ? data.engineer_tasks : []);
+    if (data.store_name) compactEmptyResolutionSpace(doc);
     // The source Word template has an empty body paragraph after the final
     // signature table. Once real engineer tasks are inserted it can overflow
     // onto an otherwise blank second page. Safely omit just that spacer.
@@ -872,7 +1000,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <script>
 (() => {
   const ids = [
-    "ticket_number", "company_name", "contact_name", "mobile_number",
+    "ticket_number", "company_name", "store_name", "contact_name", "mobile_number",
     "visit_schedule", "created_date", "location_address", "ticket_category",
     "issue_category", "issue_description", "serial_number", "engineer_tasks"
   ];

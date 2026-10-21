@@ -1,11 +1,3 @@
-# CSA Generator — quick guide
+# CSA Generator
 
-1. Open **CSA Generator** in MAU Operation Desk.
-2. Paste the Zoho ticket details.
-3. Select **Download CSA** to get the Word document.
-
-Need to correct a field? Select **Edit details first**, update the form, then **Download edited CSA**.
-
-For several tickets, paste them together and select **Add multiple tickets**. Download a single CSA or select **Download all**.
-
-The standard CSA document layout is included automatically. Support Agent and Assigned Engineer are intentionally left blank in the document.
+Paste a Zoho ticket, then select **Download CSA**. Customer, store/site/branch, physical address and engineer tasks are extracted from ticket details, emails and task lists even when customers use different labels. Use **Edit details first** if the source does not provide a reliable detail or if it requires correction. Never assume tasks were completed; Job Done / Resolution remains blank.

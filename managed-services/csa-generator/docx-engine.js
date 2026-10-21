@@ -81,6 +81,56 @@
     for (let i = 2; i < paras.length; i++) if (textOf(paras[i]).trim()) setParagraphText(doc, paras[i], "", true);
     return true;
   }
+  // Show the store / branch separately from the customer company.
+  // The original AMTI CSA template has no independent Store Name cell,
+  // so display it above the street address inside Location Address.
+  function setLocationDetails(doc, data) {
+    const address = sanitizeText(String(data.location_address || "").trim());
+    const store = sanitizeText(String(data.store_name || "").trim());
+    if (!store) return setCellValue(doc, "Location Address", address);
+    const storeLine = `Store / Site: ${store}`;
+    const success = setCellValue(doc, "Location Address", storeLine);
+    if (!success || !address) return success;
+    const cell = findCellByLabel(doc, "Location Address");
+    const p = cell && directChildren(cell, "p")[0];
+    if (!p) return success;
+    const runs = directChildren(p, "r");
+    const valueRun = runs[runs.length - 1];
+    if (!valueRun) return success;
+    // Use a real Word line break rather than a newline inside w:t.
+    // Avoid repeating the store if someone also entered it in the address field.
+    if (address.toLowerCase() === store.toLowerCase() || address.toLowerCase() === storeLine.toLowerCase()) return success;
+    valueRun.appendChild(newElement(doc, "br"));
+    const addressText = newElement(doc, "t");
+    addressText.textContent = address;
+    valueRun.appendChild(addressText);
+    return success;
+  }
+  // When a longer store name and the engineer scope are both present, keep
+  // the signature and customer remarks together on the first CSA page.
+  // Only reduce blank write-in space, never the scope of work or actual text.
+  function compactEmptyResolutionSpace(doc) {
+    const mainTable = descendants(doc, "tbl")[0];
+    if (!mainTable) return;
+    const rows = directChildren(mainTable, "tr");
+    const headingIndex = rows.findIndex(row => /JOB DONE\s*\/\s*RESOLUTION/i.test(textOf(row)));
+    if (headingIndex < 0 || !rows[headingIndex + 1]) return;
+    const spacerRow = rows[headingIndex + 1];
+    if (textOf(spacerRow).trim()) return; // never shrink filled resolution details
+    // The template contains eleven empty paragraphs in this write-in space.
+    // Keep several useful lines but avoid pushing Customer Remarks off-page.
+    for (const cell of directChildren(spacerRow, "tc")) {
+      const blanks = directChildren(cell, "p");
+      if (blanks.some(par => textOf(par).trim())) continue;
+      for (let i = blanks.length - 1; i >= 4; i--) cell.removeChild(blanks[i]);
+    }
+    const trPr = directChildren(spacerRow, "trPr")[0];
+    const trHeight = trPr && directChildren(trPr, "trHeight")[0];
+    if (trHeight) {
+      const existing = Number(trHeight.getAttributeNS(W_NS, "val"));
+      if (existing > 1750) trHeight.setAttributeNS(W_NS, "val", "1750");
+    }
+  }
   function setTicketId(xmlDoc, ticketNumber) {
     for (const p of descendants(xmlDoc, "p")) {
       const all = textOf(p);
@@ -150,7 +200,7 @@
     setCellValue(doc, "Mobile Number", data.mobile_number || "");
     setCellValue(doc, "Created Date/Time", data.created_date || "");
     setCellValue(doc, "Customer Visit Schedule Date", data.visit_schedule || "");
-    setCellValue(doc, "Location Address", data.location_address || "");
+    setLocationDetails(doc, data);
     setCellValue(doc, "Ticket Category", data.ticket_category || "");
     setCellValue(doc, "Issue Category", data.issue_category || "");
     setCellValue(doc, "Issue Description", data.issue_description || "");
@@ -158,6 +208,7 @@
     setCellValue(doc, "Support Agent", "");
     setCellValue(doc, "Assigned Engineer", "");
     setTasks(doc, Array.isArray(data.engineer_tasks) ? data.engineer_tasks : []);
+    if (data.store_name) compactEmptyResolutionSpace(doc);
     // The source Word template has an empty body paragraph after the final
     // signature table. Once real engineer tasks are inserted it can overflow
     // onto an otherwise blank second page. Safely omit just that spacer.

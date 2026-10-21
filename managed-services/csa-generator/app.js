@@ -1,6 +1,6 @@
 (() => {
   const ids = [
-    "ticket_number", "company_name", "contact_name", "mobile_number",
+    "ticket_number", "company_name", "store_name", "contact_name", "mobile_number",
     "visit_schedule", "created_date", "location_address", "ticket_category",
     "issue_category", "issue_description", "serial_number", "engineer_tasks"
   ];
