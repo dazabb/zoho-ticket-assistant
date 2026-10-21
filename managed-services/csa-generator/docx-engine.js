@@ -158,6 +158,20 @@
     setCellValue(doc, "Support Agent", "");
     setCellValue(doc, "Assigned Engineer", "");
     setTasks(doc, Array.isArray(data.engineer_tasks) ? data.engineer_tasks : []);
+    // The source Word template has an empty body paragraph after the final
+    // signature table. Once real engineer tasks are inserted it can overflow
+    // onto an otherwise blank second page. Safely omit just that spacer.
+    const body = descendants(doc, "body")[0];
+    if (body) {
+      const parts = [...body.children];
+      const last = parts[parts.length - 1];
+      const tail = parts[parts.length - 2];
+      const before = parts[parts.length - 3];
+      if (last?.localName === "sectPr" && tail?.localName === "p" &&
+          before?.localName === "tbl" && !textOf(tail).trim() &&
+          !descendants(tail, "br").length && !descendants(tail, "drawing").length &&
+          !descendants(tail, "sectPr").length) body.removeChild(tail);
+    }
     zip.file("word/document.xml", serializeXml(doc));
     for (const name of Object.keys(zip.files).filter(name => /^word\/header\d+\.xml$/i.test(name))) {
       const hDoc = parseXml(await zip.file(name).async("string"));

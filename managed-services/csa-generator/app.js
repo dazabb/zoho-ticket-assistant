@@ -143,6 +143,7 @@
     const ticket = String(data.ticket_number || "").replace(/\D/g, "");
     if (!ticket) throw new Error("Ticket number is required.");
     const normalized = {...data, ticket_number: ticket, visit_schedule: CSAParser.normalizeSchedule(data.visit_schedule || "")};
+    if (!Array.isArray(normalized.engineer_tasks) || !normalized.engineer_tasks.length) throw new Error("No engineer tasks found. Select Edit details first and enter the work to be done.");
     const analysis = CSAParser.analyzeTicketData(normalized);
     if (analysis.warnings.some(x => /copied email\/UI text/i.test(x))) {
       throw new Error("The visit schedule still contains extra copied text. Review the schedule field before generating.");
@@ -184,6 +185,12 @@
         $("editDetails").open = true;
         $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
         throw new Error("Please check the visit date before downloading.");
+      }
+      if (!Array.isArray(data.engineer_tasks) || !data.engineer_tasks.length) {
+        fillForm(data);
+        $("editDetails").open = true;
+        $("editorCard").scrollIntoView({behavior:"smooth", block:"start"});
+        throw new Error("No engineer tasks found. Add the scope of work under Edit details first.");
       }
       const ticket = await generateOne(data);
       setStatus(`CSA #${ticket} downloaded.${problems.length ? " Some information was missing; check the document before using it." : ""}`, "success");
@@ -266,6 +273,8 @@
     try {
       const contaminated = batch.filter(item => CSAParser.analyzeTicketData(item).warnings.some(x => /copied email\/UI text/i.test(x)));
       if (contaminated.length) throw new Error(`Review the visit schedule for ticket${contaminated.length > 1 ? "s" : ""} ${contaminated.map(x => x.ticket_number).join(", ")} before batch generation.`);
+      const withoutTasks = batch.filter(item => !Array.isArray(item.engineer_tasks) || !item.engineer_tasks.length);
+      if (withoutTasks.length) throw new Error(`Add engineer tasks for ticket${withoutTasks.length > 1 ? "s" : ""} ${withoutTasks.map(x => "#" + x.ticket_number).join(", ")} before downloading.`);
       const templateBytes = await getTemplateBytes();
       const normalized = batch.map(item => ({...item, visit_schedule: CSAParser.normalizeSchedule(item.visit_schedule || "")}));
       const blob = await window.CSADocx.generateBatchZip(templateBytes, normalized);

@@ -147,46 +147,67 @@
     return normalizeSpace(String(value || "").replace(/^(?:[•●▪◦‣*]\s*|[-–—]\s+|\d+[.)]\s+)/, ""));
   }
 
-  function extractTasks(text) {
+  // Read engineer activities from the actual customer request, including
+  // bulletless task lists directly beneath the original issue description.
+  // Do not mistake onsite tool-packing lists or service-desk replies for work.
+  function extractTasks(text, issueDescription = "") {
     const ls = lines(text);
-    let start = -1;
-    let plainSection = false;
+    const issue = normalizeSpace(issueDescription).toLowerCase();
+    const normalizedIssue = issue.replace(/[^a-z0-9]+/g, "");
+    const normalizedLine = value => normalizeSpace(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const heading = /^(?:please\s+do\s+the\s+following(?:\s+for)?|following\s+tasks?|engineer\s+task\s*\/\s*activity|engineer\s+tasks?|scope\s+of\s+work|work\s+to\s+be\s+performed|requested\s+tasks?|requested\s+activities|onsite\s+activities|activities\s+to\s+perform|work\s+scope|action\s+items)\s*:?\s*$/i;
+    const explicitVerb = /^(?:check|inspect|verify|test|fix|repair|replace|replaced|replacing|clean|wipe|install|upgrade|update|perform|conduct|configure|reconfigure|troubleshoot|resolve|restore|migrate|setup|set\s+up|connect|disconnect|remove|mount|unmount|provide|apply|change|adjust|reboot|restart|retrigger|validate|deploy|provision|assemble|service|relocate|reimage|image|take\s+(?:a\s+)?backup|run\s+(?:a\s+)?(?:test|diagnostic))\b/i;
+    const nounWork = /\b(?:upgrade|replacement|preventive\s+maintenance|cable\s+management|reconfiguration|installation|troubleshooting|repair|restoration|migration|health\s+check|cleaning|maintenance\s+activity)\b/i;
+    const stop = /^(?:store\s+name\s*:|serial\s*(?:#|number)\s*:|address\s*:|please\s+contact\b|location\s+address\b|company\s+name\b|contact\s+name\b|mobile\s+number\b|site\s+contact\b|it\s+contact\b|required\s+date\b|created\s+date\b|customer\s+visit\b|ticket\s+(?:information|category|owner|closed)\b|issue\s+(?:category|description)\b|support\s+(?:agent|level)\b|assigned\s+engineer\b|priority\b|severity\s+level\b|from\b\s*:|to\b\s*:|cc\b\s*:|regards\b|best\s+regards\b|thank\s+you\b|current\s+state\b|my\s+pins\b|ticket\s+properties\b|job\s+done\b|resolution\b|conforme\b|customer\s+remarks\b|[\-–—]{2,}\s*on\s+\w{3}\b|screenshot\s+for\b|kindly\s+bring\b|please\s+bring\b|(?:kindly|please)\s+provide\s+the\s+list\s+of\s+field\s+engineers\b|following\s+tools\b|tools\s+(?:for|to)\s+(?:this|bring)\b)/i;
+    const ignore = /^(?:ss|sl|gs|sa|j|[.·]|save|savecancel|cancel|reply\s+all|\d+\s+conversations?|time\s+entry|attachment|activity|approval|history|priority|status|open|closed|none|n\/a|\d{1,2}:\d{2}\s*[ap]m)$/i;
+    const toolLine = /^(?:screwdriver|screw\s+for|empty\s+external\s+hard\s+drive|hdd\/ssd\s+enclosure|sata\s+cable|usb\s+flash\s+drive|crimper|rj45|twist\s+tie|thermal\s+paste)\b/i;
+
+    const candidates = [];
+    function harvest(start, mode) {
+      const tasks = [];
+      let blanks = 0;
+      for (let j = start; j < ls.length && j < start + 28; j++) {
+        const raw = ls[j];
+        if (!raw) {
+          if (++blanks >= 3 && tasks.length) break;
+          continue;
+        }
+        blanks = 0;
+        const value = cleanTask(raw);
+        if (!value) continue;
+        if (stop.test(value) || toolLine.test(value) || heading.test(value)) break;
+        if (ignore.test(value) || /^\b(?:kindly\s+inform|please\s+inform|we\s+received|we\s+will|as\s+advised|this\s+message|site\s*id\s*:|https?:\/\/)\b/i.test(value)) break;
+        const bullet = /^(?:[•●▪◦‣*]\s*|[-–—]\s+|\d+[.)]\s+)/.test(raw);
+        const taskLike = explicitVerb.test(value) || nounWork.test(value) || bullet;
+        // Unlabelled lists must look like engineer work, not ticket metadata.
+        if (!taskLike) break;
+        if (value.length > 240) break;
+        if (tasks[tasks.length - 1] !== value) tasks.push(value);
+      }
+      if (tasks.length) candidates.push({tasks, start, mode});
+    }
 
     for (let i = 0; i < ls.length; i++) {
-      if (/Please\s+do\s+the\s+following\s+for\b/i.test(ls[i])) { start = i + 1; break; }
-    }
-    if (start < 0) {
-      for (let i = 0; i < ls.length; i++) {
-        if (/following\s+tasks\s*:\s*$/i.test(ls[i])) { start = i + 1; break; }
+      if (heading.test(ls[i])) harvest(i + 1, "heading");
+      // Zoho copies repeat the issue description in the Properties pane and in
+      // the original customer message. Only the latter has a genuine work list.
+      if (normalizedIssue && normalizedIssue.length >= 12 && normalizedLine(ls[i]) === normalizedIssue) {
+        harvest(i + 1, "original-request");
       }
     }
-    if (start < 0) {
+    // Some customer emails provide task lists but no scope heading. Only accept
+    // two or more consecutive work-like lines, never a packing/tools list.
+    if (!candidates.length) {
       for (let i = 0; i < ls.length; i++) {
-        if (/^(?:Engineer\s+Task\s*\/\s*Activity|Engineer\s+Task|Scope\s+of\s+Work)\s*:?$/i.test(ls[i])) {
-          start = i + 1;
-          plainSection = true;
-          break;
-        }
+        if (explicitVerb.test(ls[i]) || nounWork.test(ls[i])) harvest(i, "task-list");
       }
     }
-    if (start < 0) return [];
-
-    const stopMarkers = [
-      "store name:", "serial #:", "serial number:", "address:", "ticket:", "ticket information:",
-      "please contact", "site contact persons:", "it contact person:", "required date:", "regards,",
-      "thank you", "current state", "support agent:", "assigned engineer:"
-    ];
-    const tasks = [];
-    for (let i = start; i < ls.length; i++) {
-      const value = cleanTask(ls[i]);
-      if (!value) continue;
-      const low = value.toLowerCase();
-      if (stopMarkers.some(x => low.startsWith(x))) break;
-      if (/^(?:company name|contact name|mobile number|customer visit schedule date|created date\/time|location address|ticket category|issue category|issue description|serial number)\s*:/i.test(value) && plainSection) break;
-      if ([".", "svg", "resolution", "time entry", "attachment", "activity", "approval", "history"].includes(low)) continue;
-      if (!tasks.length || tasks[tasks.length - 1] !== value) tasks.push(value);
-    }
-    return tasks;
+    // Prefer the longest supported scope; on a tie prefer the original request
+    // found later in Zoho's reverse-chronological conversation history.
+    candidates.sort((a, b) => b.tasks.length - a.tasks.length || b.start - a.start);
+    const best = candidates[0];
+    if (!best || (best.mode === "task-list" && best.tasks.length < 2)) return [];
+    return best.tasks;
   }
 
   function findTicketNumber(src) {
@@ -237,7 +258,9 @@
     const ticketNumber = findTicketNumber(src);
 
     const stores = allRegex(/^\s*Store\s+Name\s*:\s*(.+?)\s*$/gim, src);
-    const companyName = stores.length ? stores[stores.length - 1] : fieldAfterLabel(src, ["Company Name", "Customer Company Name"]);
+    // Use Zoho Customer Company Name for the CSA company field; store name is a fallback.
+    const mappedCompany = fieldAfterLabel(src, ["Customer Company Name", "Company Name"]);
+    const companyName = validValue(mappedCompany) ? mappedCompany : (stores[stores.length - 1] || "");
 
     const contacts = allRegex(/Please\s+contact\s+([^\n]+?)\s+for\s+any\s+questions/gi, src);
     const contactName = contacts.length ? contacts[contacts.length - 1] : fieldAfterLabel(src, ["Contact Name"]);
@@ -278,7 +301,7 @@
       issue_category: validValue(issueCategory) ? normalizeSpace(issueCategory) : "",
       issue_description: validValue(issueDescription) ? normalizeSpace(issueDescription) : "",
       serial_number: serialNumber,
-      engineer_tasks: extractTasks(src)
+      engineer_tasks: extractTasks(src, issueDescription)
     };
   }
 
