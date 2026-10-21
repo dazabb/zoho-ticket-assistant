@@ -196,6 +196,7 @@
     if (!docFile) throw new Error("This DOCX does not contain word/document.xml.");
     const doc = parseXml(await docFile.async("string"));
     setCellValue(doc, "Company Name", data.company_name || "");
+    setCellValue(doc, "Brand", data.brand_name || "");
     setCellValue(doc, "Contact Name", data.contact_name || "");
     setCellValue(doc, "Mobile Number", data.mobile_number || "");
     setCellValue(doc, "Created Date/Time", data.created_date || "");

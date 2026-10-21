@@ -306,9 +306,14 @@
     const src=normalizeSource(text);
     const ticketNumber=findTicketNumber(src);
     const company=sectionCandidates(src,[
+      // The named Zoho account identifies the company contracting the service.
+      // A Customer Company Name such as GABC_OXYGEN identifies a brand or business unit.
+      // Do not overwrite "Golden ABC, Incorporated" with "GABC_OXYGEN".
+      {rx:/^Account\s*Name\s*\*?\s*[:=\-]?\s*(.*)$/i,score:195,label:'Zoho Account Name'},
+      {rx:/^Company\s*Name\s*[:=\-]\s*(.*)$/i,score:165,label:'Explicit Company Name'},
       {rx:/^(?:Customer\s*Company\s*Name|Customer\s*Company)\s*[:=\-]?\s*(.*)$/i,score:135,label:'Customer Company Name'},
-      {rx:/^(?:Company\s*(?:Name)?|Client\s*(?:Name)?|Customer\s*(?:Name)?|End\s*User\s*(?:Name)?|Organization\s*(?:Name)?|Organisation\s*(?:Name)?|Business\s*(?:Name)?|Merchant\s*(?:Name)?|Account\s*Name|Retailer\s*(?:Name)?)\s*[:=\-]\s*(.*)$/i,score:105,label:'Company Name'},
-      {rx:/^(?:Account\s*Name|Company\s*Name|Client\s*Name|Customer\s*Name|End\s*User|Organization\s*Name|Merchant\s*Name)\s*\*?\s*$/i,score:96,label:'Account Name'},
+      {rx:/^(?:Company\s*(?:Name)?|Client\s*(?:Name)?|Customer\s*(?:Name)?|End\s*User\s*(?:Name)?|Organization\s*(?:Name)?|Organisation\s*(?:Name)?|Business\s*(?:Name)?|Merchant\s*(?:Name)?|Retailer\s*(?:Name)?)\s*[:=\-]\s*(.*)$/i,score:105,label:'Company Name'},
+      {rx:/^(?:Company\s*Name|Client\s*Name|Customer\s*Name|End\s*User|Organization\s*Name|Merchant\s*Name)\s*\*?\s*$/i,score:96,label:'Company Name'},
       {rx:/^(?:for\s+customer|on\s+behalf\s+of|client\s+is)\s+(.+)$/i,score:45,label:'Customer'}
     ]);
     const sites=sectionCandidates(src,[
@@ -327,6 +332,20 @@
     let companyName=pickedCompany.value||"";
     if (/\s*[-–]\s*Sandz\s*$/i.test(companyName)) companyName=companyName.replace(/\s*[-–]\s*Sandz\s*$/i,"");
     if (!companyName && storeName) companyName=storeName;
+
+    // Keep the retail brand distinct from the registered parent company.
+    // Use an explicit Brand/Business Unit when provided. For a GABC_OXYGEN
+    // customer-company code, infer OXYGEN only if the matching store starts
+    // with OXYGEN; do not invent brands from arbitrary underscores.
+    const brandOptions=sectionCandidates(src,[
+      {rx:/^(?:Brand|Retail\s*Brand|Business\s*Unit|Trading\s*Name)\s*[:=\-]\s*(.*)$/i,score:120,label:'Brand'}
+    ]);
+    let brandName=selectedValue(brandOptions).value||'';
+    const companyCode=selectedValue(company.filter(c=>c.label==='Customer Company Name')).value||'';
+    const matchBrand=companyCode.match(/^GABC[_\-]([A-Z][A-Z\s-]{2,35})$/i);
+    if (!brandName && matchBrand && storeName.toLowerCase().startsWith(matchBrand[1].trim().toLowerCase()+' ')) {
+      brandName=matchBrand[1].trim().replace(/_/g,' ');
+    }
 
     const contactOptions=sectionCandidates(src,[
       {rx:/^(?:Contact\s*(?:Person|Name)?|Site\s*Contact|Store\s*Contact|On.?site\s*Contact|Person\s*in\s*Charge|PIC|Point\s*of\s*Contact|Attention\s*to|Contact\s*Person\s*Name)\s*[:=\-]\s*(.*)$/i,score:95,label:'Contact Name'}
@@ -367,6 +386,7 @@
     return {
       ticket_number:ticketNumber,
       company_name:normalizeSpace(companyName),
+      brand_name:normalizeSpace(brandName),
       store_name:normalizeSpace(storeName),
       contact_name:normalizeSpace(contactName),
       mobile_number:mobile,
