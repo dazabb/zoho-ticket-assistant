@@ -180,7 +180,7 @@
       const range=numbers.length?rpoRange(numbers,true):'Not available';
       const exceptions=rows.filter(r=>!/^meeting sla$/i.test(r.protection));
       const errors=rows.filter(r=>r.level==='red').length,warns=rows.filter(r=>r.level==='yellow').length;
-      return `<div class="site"><strong>${escapeHtml(site)}</strong><div class="site-rpo">${range}</div><div class="detail">${rows.length} VPGs · ${normal.length} meeting SLA</div>${(exceptions.length||errors||warns)?`<span class="flag">${[exceptions.length?exceptions.length+' SLA exception(s)':'',errors?errors+' red':'',warns?warns+' yellow':''].filter(Boolean).join(' · ')}</span>`:'<span class="detail" style="color:#16834e">All meeting SLA</span>'}</div>`;
+      return `<div class="site"><strong>${escapeHtml(site)}</strong><div class="site-rpo">${range}</div><div class="detail">${rows.length} VPGs · ${normal.length} meeting SLA</div>${(exceptions.length||errors||warns)?`<span class="flag">${[exceptions.length?exceptions.length+' SLA exception(s)':'',errors?errors+' Red Alert'+(errors===1?'':'s'):'',warns?warns+' Yellow Alert'+(warns===1?'':'s'):''].filter(Boolean).join(' · ')}</span>`:'<span class="detail" style="color:#16834e">All meeting SLA</span>'}</div>`;
     }).join('');
     $('screenshotInputs').innerHTML=sites().map((site,i)=>`<label class="screen-field">${escapeHtml(site)}<input aria-label="Screenshot for ${escapeHtml(site)}" type="file" data-site="${i}" accept="image/png,image/jpeg,image/webp"></label>`).join('');
     $('screenshotInputs').querySelectorAll('input').forEach(input=>input.addEventListener('change',async e=>{
@@ -197,8 +197,8 @@
     const warnings=[];
     if(!state.alerts)warnings.push('Monitoring Alert.csv is still needed.');
     if(counts.unknown)warnings.push(`${counts.unknown} VPG status value(s) were not recognized.`);
-    const noMatching=current.filter(a=>!a.matched);
-    if(noMatching.length)warnings.push(`${noMatching.length} VPG(s) have no matching ${noMatching.map(a=>a.level.toUpperCase()).join('/')} alert details in the uploaded monitoring file.`);
+    // Missing descriptions are handled with neutral, source-grounded wording.
+    // Do not put import/diagnostic language in the client-facing report.
     // The exports can be captured at different times. Warn without treating an
     // alert timestamp as proof that a VPG's current status changed.
     const unmatched=(state.alerts||[]).filter(a=>a.entity==='VPG'&&!alertVpg(a));
@@ -211,8 +211,8 @@
   function sites(){return [...new Set((state.vpgs||[]).map(r=>r.site).filter(Boolean))].sort((a,b)=>{const ia=ORDER.indexOf(a),ib=ORDER.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b)})}
   function alertItem(a){
     const status=a.level==='red'?'Red':'Yellow';
-    const description=a.description||`No matching ${status.toLowerCase()} monitoring alert details in the export. Verify in Zerto.`;
-    return `<div class="alert-item ${a.level}"><div class="alert-head"><span>${escapeHtml(status)} · ${escapeHtml(a.site)} · ${escapeHtml(conciseVpgName(a))}</span></div><p>${escapeHtml(description)}</p></div>`;
+    const description=a.description||fallbackAlertDetail(a);
+    return `<div class="alert-item ${a.level}"><div class="alert-head"><span>${escapeHtml(status)} Alert · ${escapeHtml(a.site)} · ${escapeHtml(conciseVpgName(a))}</span></div><p>${escapeHtml(description)}</p></div>`;
   }
   async function handleFile(file,type){
     if(!file)return;
@@ -245,13 +245,34 @@
     let text=normal.length?`${exception.length?'Most VPGs are':'VPGs are'} meeting SLA${range?' with Actual RPO of approximately '+range:''}.`:'VPG protection status requires review.';
     const currentRed=rows.filter(v=>v.level==='red');
     const currentYellow=rows.filter(v=>v.level==='yellow');
-    if(currentRed.length)text+=` ${currentRed.length} VPG${currentRed.length===1?' has':'s have'} RED status in Zerto${currentRed.length===1?'':' (see affected VPGs below)'}.`;
-    if(currentYellow.length)text+=` ${currentYellow.length} VPG${currentYellow.length===1?' has':'s have'} YELLOW status in Zerto.`;
-    for(const row of exception){
+    if(currentRed.length)text+=` ${currentRed.length} VPG${currentRed.length===1?' has a Red Alert':'s have Red Alerts'} in Zerto.`;
+    if(currentYellow.length)text+=` ${currentYellow.length} VPG${currentYellow.length===1?' has a Yellow Alert':'s have Yellow Alerts'} in Zerto.`;
+    // Affected VPGs are described once under their Red/Yellow Alert section.
+    for(const row of exception.filter(v=>v.level!=='red'&&v.level!=='yellow')){
       const rpo=Number.isFinite(row.rpo)?` (Actual RPO ${duration(row.rpo)})`:row.rawRpo?` (Actual RPO ${row.rawRpo})`:'';
       text+=` ${row.name}: ${row.protection}${rpo}.`;
     }
     return text;
+  }
+  // When the current VPG condition has no same-severity alert description,
+  // use only the protection state that the VPG export actually provides.
+  // Never paste internal file names, parser warnings, or unsupported causes
+  // into a formal client email.
+  function fallbackAlertDetail(alert){
+    const stateText=String(alert.vpg?.protection||'').trim();
+    const name=alert.vpgName;
+    if(stateText && !/^meeting sla$/i.test(stateText)){
+      const rpo=Number.isFinite(alert.vpg?.rpo)?` (Actual RPO ${duration(alert.vpg.rpo)})`:'';
+      return `${name}: ${stateText}${rpo}.`;
+    }
+    return `${name}.`;
+  }
+  function alertSummaryIssue(alert){
+    if(alert.matched)return shortIssue(alert.description);
+    const protection=String(alert.vpg?.protection||'').trim();
+    if(/^history not meeting sla$/i.test(protection))return 'history not meeting SLA';
+    if(protection && !/^meeting sla$/i.test(protection))return protection;
+    return ''; // The exported VPG status is known, but no cause is confirmed.
   }
   function shortIssue(description){
     if(/reached its configured limit/i.test(description))return 'journal limit reached';
@@ -272,8 +293,7 @@
         for(const level of ['red','yellow']){
           const status=level==='red'?'Red':'Yellow';
           for(const a of siteAlerts.filter(v=>v.level===level)){
-            const detail=a.matched?a.description:
-              `${a.vpgName} has ${status} status in Zerto. No matching ${status.toLowerCase()} alert description was found in Monitoring Alert.csv; please verify in Zerto.`;
+            const detail=a.matched?a.description:fallbackAlertDetail(a);
             html+=`<p class="alert-line"><b>${status} Alerts:</b> ${escapeHtml(detail)}</p>`;
           }
         }
@@ -282,11 +302,11 @@
     }
     const red=alerts.filter(a=>a.level==='red');
     const yellow=alerts.filter(a=>a.level==='yellow');
-    html+=`<p><b>Alert Summary:</b> ${red.length} Red VPG${red.length===1?'':'s'}, ${yellow.length} Yellow VPG${yellow.length===1?'':'s'}.</p>`;
-    if(red.length)html+=`<p><b>Red Alerts:</b> ${escapeHtml(red.map(a=>`${a.site}: ${conciseVpgName(a)} (${a.matched?shortIssue(a.description):'check alert details'})`).join('; '))}</p>`;
-    if(yellow.length)html+=`<p><b>Yellow Alerts:</b> ${escapeHtml(yellow.map(a=>`${a.site}: ${conciseVpgName(a)} (${a.matched?shortIssue(a.description):'check alert details'})`).join('; '))}</p>`;
-    html+='<p><i>Legend – VPG Status Indicators</i></p>';
-    html+='<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:570px;border:1px solid #444;font-family:Arial,sans-serif;font-size:12px;background:#fff;color:#222"><thead><tr><th style="border:1px solid #444;text-align:left;padding:6px">Indicator</th><th style="border:1px solid #444;text-align:left;padding:6px">Status Description</th></tr></thead><tbody><tr><td style="border:1px solid #444;padding:6px">🟢 Green</td><td style="border:1px solid #444;padding:6px">Healthy status in Zerto</td></tr><tr><td style="border:1px solid #444;padding:6px">🟡 Yellow/Orange</td><td style="border:1px solid #444;padding:6px">Warning reported; review the affected VPG</td></tr><tr><td style="border:1px solid #444;padding:6px">🔴 Red</td><td style="border:1px solid #444;padding:6px">Error reported; check Protection Status and active alerts before assessing replication health</td></tr></tbody></table>';
+    html+=`<p><b>Alert Summary:</b> ${red.length} Red Alert${red.length===1?'':'s'}, ${yellow.length} Yellow Alert${yellow.length===1?'':'s'}.</p>`;
+    if(red.length)html+=`<p><b>Red Alerts:</b> ${escapeHtml(red.map(a=>`${a.site}: ${conciseVpgName(a)}${alertSummaryIssue(a)?` (${alertSummaryIssue(a)})`:''}`).join('; '))}</p>`;
+    if(yellow.length)html+=`<p><b>Yellow Alerts:</b> ${escapeHtml(yellow.map(a=>`${a.site}: ${conciseVpgName(a)}${alertSummaryIssue(a)?` (${alertSummaryIssue(a)})`:''}`).join('; '))}</p>`;
+    html+='<p><i>Legend – Zerto Alert Indicators</i></p>';
+    html+='<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%;max-width:570px;border:1px solid #444;font-family:Arial,sans-serif;font-size:12px;background:#fff;color:#222"><thead><tr><th style="border:1px solid #444;text-align:left;padding:6px">Indicator</th><th style="border:1px solid #444;text-align:left;padding:6px">Status Description</th></tr></thead><tbody><tr><td style="border:1px solid #444;padding:6px">🟢 Green</td><td style="border:1px solid #444;padding:6px">Healthy status in Zerto</td></tr><tr><td style="border:1px solid #444;padding:6px">🟡 Yellow/Orange</td><td style="border:1px solid #444;padding:6px">Warning alert reported in Zerto</td></tr><tr><td style="border:1px solid #444;padding:6px">🔴 Red</td><td style="border:1px solid #444;padding:6px">Error alert reported in Zerto</td></tr></tbody></table>';
     html+='<p style="margin-top:16px">For questions or further clarifications regarding this report, please feel free to respond to this email.</p>';
     return html;
   }
