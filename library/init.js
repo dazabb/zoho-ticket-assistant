@@ -742,8 +742,8 @@ We received a [monitoring platform] alert for [affected system] indicating the f
 Error: [exact visible error text]
 Details: [exact visible error detail, if available]
 [Describe the observed failure, affected source/destination, file system, progress, and impact only where evidenced.]
-Please be informed that ticket #[number] has been logged for your reference. [Only if a ticket number is explicitly provided; otherwise omit the whole sentence.]
-We will coordinate with a Service Engineer to assist with your concern. [Only promise this if coordination has been requested or is the stated next step. Otherwise state the next step conservatively.]
+Please be informed that we have already created Ticket #[number] for your reference. [Only if the current Zoho ticket number is confirmed. Otherwise use #[enter ticket number] as a placeholder, NEVER fabricate a number.]
+We will coordinate with a Service Engineer to assist you. [Or name the next step accurately if the source says otherwise.]
 For any further questions or concerns, please reply to this email.
 Thank you.
 
@@ -752,7 +752,10 @@ Rules:
 - The user's provided RackWare example is a tone and structure reference only; NEVER reuse its ticket number, hostname, client, percentage, or error unless they are actually present in this incident.
 - No engineer signature or address; users add their own signature in Zoho Desk.
 - If the recipient name is not supplied, use "Hi Team,".
-- If no ticket number is provided, do not invent one; omit the ticket number sentence.
+- Do not borrow a number from other tickets in Zoho search results, an email chain, a RackWare sync Job ID, or an external IN/SR reference. If no current Zoho ticket number is confirmed, include the visible placeholder Ticket #[enter ticket number] so an employee can enter the number before sending.
+- Source language matters: when the source is a vendor/monitoring notification EMAIL, say "We received a [vendor] monitoring alert"; when the source contains internal L1.5 findings or our team's own monitoring, say "We observed". For unknown origin, use neutral wording, not "We received a report".
+- Do not say "we have created" unless a Zoho ticket actually exists; a number placeholder is an unfinished draft, not a claim that a ticket already exists.
+- Keep the short closing: ticket reference, engineer coordination (if appropriate), "For any further questions or concerns, please reply to this email.", "Thank you."
 - Do not claim a ticket has been logged or a service engineer engaged unless the source explicitly indicates it.
 - For unconfirmed causes, write observations only. Do not promise resolution time.
 - Keep paragraphs short and use normal punctuation; do not include literal Markdown symbols such as ** or backticks in the email itself.
@@ -1013,10 +1016,12 @@ Severity answer structure:
   function renderClientEmail(rawText) {
     const raw = repairText(rawText).trim().replace(/^```(?:text)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
     const stripped = raw.replace(/\*\*(.*?)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
+    const needsNumber = /Ticket\s*#\[enter ticket number\]/i.test(stripped);
     const formatted = escapeHtml(stripped).split(/\n\s*\n/).map(function (paragraph) {
       return `<p>${paragraph.replace(/\n/g, "<br>")}</p>`;
     }).join("");
-    return `<section class="client-email-result"><div class="result-header"><div class="result-heading"><span class="result-icon">✉</span><div><span class="result-title">Client email draft</span><span class="result-subtitle">Review names and ticket number before sending</span></div></div><button type="button" class="result-copy" data-copy-result="email">Copy email</button></div><div class="email-letter">${formatted}</div><details class="result-raw"><summary>View plain email text</summary><textarea class="result-raw-source" readonly aria-label="Plain client email">${escapeHtml(stripped)}</textarea></details></section>`;
+    const entry = needsNumber ? `<div class="email-ticket-entry"><label for="email-ticket-number-field">Zoho ticket number</label><input id="email-ticket-number-field" type="text" inputmode="numeric" placeholder="e.g. 109383" maxlength="9" data-email-ticket-number aria-label="Zoho ticket number"><button type="button" class="result-copy" data-set-email-ticket>Use number</button><span class="email-ticket-helper">Add the ticket number before copying.</span></div>` : '';
+    return `<section class="client-email-result"><div class="result-header"><div class="result-heading"><span class="result-icon">✉</span><div><span class="result-title">Client email draft</span><span class="result-subtitle">Ready for your review</span></div></div><button type="button" class="result-copy" data-copy-result="email" ${needsNumber ? 'disabled title="Add ticket number first"':''}>Copy email</button></div>${entry}<div class="email-letter">${formatted}</div><details class="result-raw"><summary>View plain email text</summary><textarea class="result-raw-source" readonly aria-label="Plain client email">${escapeHtml(stripped)}</textarea></details></section>`;
   }
 
   function formatMessageContent(text, role, mode) {
@@ -3077,10 +3082,14 @@ Severity answer structure:
       }
       const imageParts = await Promise.all(state.attachments.filter(a => a.status === 'ready' && a.file).slice(0,4).map(fileToGeminiImage));
       if (imageParts.length) prompt += "\n\nIMPORTANT: The user provided actual screenshots as image parts. Read the images directly. Extract only visible facts and exact errors. Do not ask the user to paste text already visible in the screenshots. Treat user-provided company name as intended customer, but flag if the screenshot clearly belongs to another company. Do not invent unreadable fields or claim actions were performed.";
-      const reply = await fetchTeamAiResponse(prompt, mode === 'qa' || mode === 'bridge', imageParts);
+      const reply = await fetchTeamAiResponse(prompt, mode === 'qa' || mode === 'bridge' || mode === 'email', imageParts);
       // Prevent delayed responses from being inserted into another profile or chat.
       if (state.activeProfileId !== sendingProfile || state.activeSessionId !== sendingSession) return;
       let normalizedReply = normalizeAssistantOutput(reply, mode);
+      if(mode==='email' && window.MAUTicketCompanions){
+        const prior=[...state.chatConversation].reverse().find(item=>item.role==='model' && item.parts?.[0]?.text);
+        normalizedReply=window.MAUTicketCompanions.finishEmail(normalizedReply,combinedInput,prior?.parts?.[0]?.text||'');
+      }
       let classificationCorrections = [];
       if (mode === "standard" && window.MAUSandzTicketRules) {
         const checked = window.MAUSandzTicketRules.fixZohoText(normalizedReply, combinedInput);
@@ -3148,7 +3157,7 @@ Severity answer structure:
       if (mode === "standard") {
         updateWorkspaceFromAssistantReply(normalizedReply);
         if (state.outputMode === 'zoho' && window.MAUTicketCompanions) {
-          const companions=window.MAUTicketCompanions.create(normalizedReply);
+          const companions=window.MAUTicketCompanions.create(normalizedReply, [focusedUserText, scopedContext.ocrText].filter(Boolean).join('\n\n'));
           // Companion drafts are created from this exact validated ticket;
           // zero extra Gemini requests, separate visible chat and follow-up history.
           appendCompanion('email', 'Client email for the current ticket', companions.email);
@@ -3362,6 +3371,29 @@ Severity answer structure:
       });
       $("clearAttachmentsBtn").addEventListener("click", clearAttachments);
       $("chat-messages").addEventListener("click", async function (event) {
+        const numberButton = event.target.closest("[data-set-email-ticket]");
+        if (numberButton) {
+          const card=numberButton.closest('.client-email-result');
+          const entry=card?.querySelector('[data-email-ticket-number]');
+          const original=card?.querySelector('.result-raw-source')?.value||'';
+          const replacement=window.MAUTicketCompanions?.withTicketNumber(original,entry?.value||'');
+          if (!replacement || replacement===original) {
+            showSnackbar('Enter a valid Zoho ticket number (4–9 digits).');
+            entry?.focus();return;
+          }
+          const bubble=card.closest('.message-bubble');
+          if (bubble)bubble.innerHTML=renderClientEmail(replacement);
+          // Keep the edited draft when users switch tabs or reopen the session.
+          for(let i=state.chatConversation.length-1;i>=0;i--){
+            const item=state.chatConversation[i];
+            if(item?.role==='model' && Array.isArray(item.parts)){
+              item.parts=[{text:replacement}];break;
+            }
+          }
+          persistChatMessages();persistConversation();
+          showSnackbar('Ticket number added. You can now copy the email.');
+          return;
+        }
         const emailButton = event.target.closest("[data-draft-email]");
         if (emailButton) {
           const selectEmail = document.querySelector('[data-output-mode="email"]');

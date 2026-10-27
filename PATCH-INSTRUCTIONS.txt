@@ -1,0 +1,36 @@
+MAU CLIENT EMAIL PATCH (for MAU Ticketing v3.0.8)
+================================================
+
+Only these files are changed:
+  library/ticket-companions.js
+  library/init.js
+  library/output-improvements.css
+
+INSTALL
+1. Back up your existing MAU website files (or GitHub repository).
+2. Copy the three files above into the matching library/ folder,
+   replacing the old copies.
+3. If using GitHub Pages, commit/push those updated files and let
+   the website deploy. Refresh the page with Ctrl+Shift+R.
+4. No Chrome extension changes, no Team Chat History/Firebase changes.
+
+CHANGES
+- Uses source-specific client email greetings and opening language:
+  received RackWare/vendor alert vs SANDZ's own observations.
+- Uses selected Zoho ticket number from the pasted ticket's Reply All
+  header or an explicit, grounded Ticket Number field.
+- If no ticket number exists yet, shows an entry field and prevents
+  copying the unfinished customer email.
+- Adds a professional ticket acknowledgment, appropriate next action,
+  simple closing, and no inserted email signature.
+- Client Email follow-up chats retain their own conversation context
+  and preserve the verified number when a rewrite is requested.
+- Automatically generated Zoho, Client Email, and Troubleshooting drafts
+  still require only ONE Gemini call. User-requested AI rewrites
+  consume a separate call as expected.
+
+IMPORTANT
+- The patch cannot create a Zoho ticket number: Zoho assigns that
+  only when a ticket actually exists. Enter its number before copying.
+- The email is a draft only; review facts, ticket status and commitments
+  before sending. MAU does not send email or submit tickets automatically.

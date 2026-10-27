@@ -61,3 +61,10 @@ body.theme-dark{--answer-ink:#f1f3f7;--answer-label:#b6bfd0;--answer-code:#1a202
 html,body{max-width:100%;overflow-x:clip!important}
 #container{max-width:100%;overflow-x:clip}
 @media(max-width:680px){.result-header{flex-wrap:wrap}.result-action-set{width:100%;justify-content:flex-start}}
+
+/* Client email: simple ticket-reference entry before copying */
+.email-ticket-entry{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:13px 20px;background:var(--mau-secondary);border-bottom:1px solid var(--mau-border)}
+.email-ticket-entry label{font-size:13px;font-weight:650;color:var(--mau-text)}
+.email-ticket-entry input{width:145px;max-width:100%;min-height:36px;padding:7px 10px;border:1px solid var(--mau-border);border-radius:8px;background:var(--mau-surface);color:var(--mau-text);font-size:13px}
+.email-ticket-helper{font-size:12px;color:var(--mau-muted, #64748b)}
+.result-copy:disabled{opacity:.5;cursor:not-allowed}
