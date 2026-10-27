@@ -1,0 +1,194 @@
+{
+  "version": "3.0.7",
+  "policy": "Fallback only. Explicit current-ticket Address wins.",
+  "entries": [
+    {
+      "company": "Penshoppe SM City GENSAN",
+      "aliases": [
+        "PENSHOPPE SM CITY GENSAN",
+        "P-BTQ SM City Gen. Santos"
+      ],
+      "address": "# 155A and 156A SM City Gensan Cor Santiago Blvd and San Miguel St General Santos City"
+    },
+    {
+      "company": "PENSHOPPE KCC MALLGENSAN",
+      "aliases": [
+        "PENSHOPPE KCC MALL GENSAN",
+        "P-BTQ KCC Mall Gen. Santos"
+      ],
+      "address": "UG Floor Code No. 107-A New KCC Mall of Gensan, J. Catolico Sr. Ave., General Santos City"
+    },
+    {
+      "company": "PENSHOPPE AYALA DAVAO",
+      "aliases": [
+        "P-BTQ Ayala Davao"
+      ],
+      "address": "Unit 1147-1149, Level 1, Ayala Abreeza Mall, JP Laurel Ave., Bajada, Davao City"
+    },
+    {
+      "company": "Penshoppe SM City Mindpro",
+      "aliases": [
+        "P-BTQ SM City Mindpro"
+      ],
+      "address": "Unit 22-23 2/F, SM City Mindpro, La Purisima St., Zamboanga City"
+    },
+    {
+      "company": "X122- Oxygen -BTQ SM Seaside City Cebu",
+      "aliases": [
+        "Oxygen -BTQ SM Seaside City Cebu",
+        "O2-BTQ SM Seaside City Cebu"
+      ],
+      "address": "2039 – 2040 2nd Level, SM Seaside Cebu, South Road Properties, Cebu City"
+    },
+    {
+      "company": "Regatta Robinsons Iloilo",
+      "aliases": [
+        "R-BTQ Robinsons Iloilo"
+      ],
+      "address": "G/F Robinsons Place Iloilo Roxas Village, Iloilo City, Iloilo"
+    },
+    {
+      "company": "Oxygen-BTQ SM City Iloilo",
+      "aliases": [
+        "X019- Oxygen-BTQ SM City Iloilo",
+        "O2-BTQ SM City Iloilo"
+      ],
+      "address": "S-40, UGF, SM City Iloilo, Benigno Aquino Ave., Mandurriao, Iloilo City"
+    },
+    {
+      "company": "OXYGEN KCC MARBEL",
+      "aliases": [
+        "O2-BTQ KCC Marbel"
+      ],
+      "address": "2/F KCC Mall of Marbel Zone II (Pob.) City of Koronadal, South Cotabato"
+    },
+    {
+      "company": "PENSHOPPE ACCESSORIES SM BUTUAN",
+      "aliases": [
+        "P-BTQ Accs SM Butuan"
+      ],
+      "address": "G/F SM BUTUAN LAPU-LAPU POB. (BRGY. 8), BUTUAN CITY AGUSAN DEL NORTE"
+    },
+    {
+      "company": "Penshoppe Savemore Tacloban",
+      "aliases": [
+        "P-BTQ Savemore Tacloban"
+      ],
+      "address": "GF Unit 125-126, SM Savemore Market Tacloban, J. Romualdez St., Tacloban City, Leyte"
+    },
+    {
+      "company": "Oxygen SM City GENSAN",
+      "aliases": [
+        "O2-BTQ SM City Gen. Santos"
+      ],
+      "address": "# 141-142 SM City Gensan Cor Santiago Blvd and San Miguel St General Santos City"
+    },
+    {
+      "company": "X079- Oxygen-BTQ SM City Bacolod",
+      "aliases": [
+        "Oxygen-BTQ SM City Bacolod"
+      ],
+      "address": "Oxygen SMBD 150 Bldg B, SM City Bacolod, Brgy 062, Poblacion Reclamation Area, Bacolod City"
+    },
+    {
+      "company": "Regatta SM City Iloilo",
+      "aliases": [
+        "R-BTQ SM City Iloilo"
+      ],
+      "address": "Unit 1012 Uppergroundfloor SM City Iloilo, Benigno Aquino Ave. Mandurriao Iloilo City"
+    },
+    {
+      "company": "Memo Robinsons Iligan",
+      "aliases": [
+        "M-BTQ Robinsons Iligan"
+      ],
+      "address": "Stall # 157 - 158B G/F Robinsons Place, Macapagal Highway Tubod Iligan City"
+    },
+    {
+      "company": "Forme Robinsons Iligan",
+      "aliases": [
+        "F-BTQ Robinsons Iligan"
+      ],
+      "address": "Stall # 159 - 160 G/F Robinsons Place, Macapagal Highway Tubod Iligan City"
+    },
+    {
+      "company": "Penshoppe Sindangan",
+      "aliases": [
+        "P-BTQ Sindangan"
+      ],
+      "address": "SMCT Property/DES Appliance New Building, Ninoy Aquino Boulevard, Poblacion, Sindangan, Zamboanga del Norte"
+    },
+    {
+      "company": "X024- Oxygen BTQ Ayala Center Cebu",
+      "aliases": [
+        "O2-BTQ Ayala Center Cebu"
+      ],
+      "address": "Level 2, Space 248, Ayala Center Cebu, Cebu Business Park, Cebu City"
+    },
+    {
+      "company": "Oxygen Robinsons Valencia",
+      "aliases": [
+        "O2-BTQ Robinsons Valencia"
+      ],
+      "address": "Level 1, Robinsons Place Valencia, Hagkol, Bagontaas, Valencia, Bukidnon"
+    },
+    {
+      "company": "Regatta Robinsons Valencia",
+      "aliases": [
+        "R-BTQ Robinsons Valencia"
+      ],
+      "address": "Level 1, Robinsons Place Valencia, Hagkol, Bagontaas, Valencia, Bukidnon"
+    },
+    {
+      "company": "Forme SM Lanang Premier Davao",
+      "aliases": [
+        "F-BTQ SM Lanang Premier"
+      ],
+      "address": "Unit 204, 2nd floor, SM Lanang Premier, J.P. Laurel Avenue, Davao City"
+    },
+    {
+      "company": "X195- Oxygen BTQ Gmall Toril Davao",
+      "aliases": [
+        "O2-BTQ Gmall Toril Davao"
+      ],
+      "address": "UGF Gaisano Mall Toril Davao City, Davao Del Sur"
+    },
+    {
+      "company": "P052- Penshoppe Boutique SM City Cebu",
+      "aliases": [
+        "Penshoppe SM City Cebu",
+        "P-BTQ SM City Cebu"
+      ],
+      "address": "Unit B1102-3, UGF, SM City Cebu, North Reclamation Area, Cebu City"
+    },
+    {
+      "company": "Forme Robinsons Ormoc",
+      "aliases": [
+        "F-BTQ Robinsons Place Ormoc"
+      ],
+      "address": "LEVEL 1 – TENANT 134-135A ROBINSONS PLACE ORMOC, BRGY. COGON, ORMOC CITY 6541"
+    },
+    {
+      "company": "Penshoppe Accessories Primark Tacurong",
+      "aliases": [
+        "P-BTQ Accs Primark Tacurong"
+      ],
+      "address": "Magsaysay Avenue, Bonifacio Street, Tacurong City, Sultan Kudarat"
+    },
+    {
+      "company": "Forme Robinsons Place Butuan",
+      "aliases": [
+        "Forme Robinsons Butuan",
+        "F-BTQ Robinsons Place Butuan"
+      ],
+      "address": "Level 1 EXP 1-132, 1-133A Robinsons Place, Brgy. Bayanihan, Butuan City"
+    },
+    {
+      "company": "Forme KCC GENSAN",
+      "aliases": [
+        "F-BTQ KCC Mall Gen. Santos"
+      ],
+      "address": "Unit B8-0009A/B upper G/F, KCC Mall of Gensan, J. Catolico Ave., General Santos City"
+    }
+  ]
+}

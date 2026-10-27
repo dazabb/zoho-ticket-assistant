@@ -1,0 +1,30 @@
+{
+  "110510": {
+    "company_name": "Penshoppe SM City GENSAN",
+    "location_address": "# 155a and 156a SM City Gensan Cor Santiago Blvd and San Miguel St General Santos City",
+    "serial_number": "4CE9361N16"
+  },
+  "110520": {
+    "company_name": "Penshoppe SM City Mindpro",
+    "location_address": "Unit 22-23 2/F, SM City Mindpro , La Purisima St., Zamboanga City",
+    "serial_number": "4CE9420T7G"
+  },
+  "110525": {
+    "company_name": "PENSHOPPE KCC MALLGENSAN",
+    "location_address": "UG Floor Code No. 107-A New KCC Mall of Gensan, J. Catolico Sr. Ave., General Santos City",
+    "serial_number": "SGH816R90G"
+  },
+  "110529": {
+    "company_name": "PENSHOPPE AYALA DAVAO",
+    "location_address": "Unit 1147-1149, Level 1, Ayala Abreeza Mall, JP Laurel Ave., Bajada, Davao City",
+    "serial_number": "SGH816RD1H"
+  },
+  "92228": {
+    "company_name": "X122- Oxygen -BTQ SM Seaside City Cebu",
+    "location_address": "2039 – 2040 2nd Level, SM Seaside Cebu, South Road Properties, Cebu City",
+    "engineer_tasks": [
+      "Set up 1 set of POS",
+      "Cable Management"
+    ]
+  }
+}

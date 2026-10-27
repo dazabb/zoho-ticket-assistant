@@ -166,3 +166,8 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
 .batch-card .section-head{flex-wrap:wrap}
 .batch-action.download{font-weight:750}
 @media(max-width:640px){.card{padding:16px}.ticket-actions{display:grid;grid-template-columns:1fr}.ticket-actions .btn{width:100%}.edit-card{padding:0}.edit-card summary{padding:18px}.edit-content{padding:18px}.shell{padding:18px 12px}}
+
+/* v3.0.7 — Company Name and physical Location Address separation */
+.field-hint{display:inline-block;margin-left:6px;color:var(--muted);font-size:10px;font-weight:600;text-transform:none;letter-spacing:0}
+.micro-note{margin:14px 0 2px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--soft);color:var(--muted);font-size:11px;line-height:1.5}
+.micro-note strong{color:var(--ink)}

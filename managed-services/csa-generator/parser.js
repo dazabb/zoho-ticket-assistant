@@ -1,6 +1,39 @@
 (() => {
   const PLACEHOLDERS = new Set(["", "-", "none", "-none-", "n/a", "0", "dd mmm yyyy"]);
   const REGION_ONLY = new Set(["MINDANAO", "VISAYAS", "LUZON", "NCR"]);
+
+  // CSA site knowledge is a fallback only. Explicit Address / Site Address
+  // text in the CURRENT ticket always wins. This helps older Zoho tickets
+  // where Customer Location Address contains only a region or repeats the
+  // store name instead of the physical service address.
+  const SITE_KNOWLEDGE = [
+    { company:"Penshoppe SM City GENSAN", aliases:["PENSHOPPE SM CITY GENSAN","P-BTQ SM City Gen. Santos"], address:"# 155A and 156A SM City Gensan Cor Santiago Blvd and San Miguel St General Santos City" },
+    { company:"PENSHOPPE KCC MALLGENSAN", aliases:["PENSHOPPE KCC MALL GENSAN","P-BTQ KCC Mall Gen. Santos"], address:"UG Floor Code No. 107-A New KCC Mall of Gensan, J. Catolico Sr. Ave., General Santos City" },
+    { company:"PENSHOPPE AYALA DAVAO", aliases:["P-BTQ Ayala Davao"], address:"Unit 1147-1149, Level 1, Ayala Abreeza Mall, JP Laurel Ave., Bajada, Davao City" },
+    { company:"Penshoppe SM City Mindpro", aliases:["P-BTQ SM City Mindpro"], address:"Unit 22-23 2/F, SM City Mindpro, La Purisima St., Zamboanga City" },
+    { company:"X122- Oxygen -BTQ SM Seaside City Cebu", aliases:["Oxygen -BTQ SM Seaside City Cebu","O2-BTQ SM Seaside City Cebu"], address:"2039 – 2040 2nd Level, SM Seaside Cebu, South Road Properties, Cebu City" },
+    { company:"Regatta Robinsons Iloilo", aliases:["R-BTQ Robinsons Iloilo"], address:"G/F Robinsons Place Iloilo Roxas Village, Iloilo City, Iloilo" },
+    { company:"Oxygen-BTQ SM City Iloilo", aliases:["X019- Oxygen-BTQ SM City Iloilo","O2-BTQ SM City Iloilo"], address:"S-40, UGF, SM City Iloilo, Benigno Aquino Ave., Mandurriao, Iloilo City" },
+    { company:"OXYGEN KCC MARBEL", aliases:["O2-BTQ KCC Marbel"], address:"2/F KCC Mall of Marbel Zone II (Pob.) City of Koronadal, South Cotabato" },
+    { company:"PENSHOPPE ACCESSORIES SM BUTUAN", aliases:["P-BTQ Accs SM Butuan"], address:"G/F SM BUTUAN LAPU-LAPU POB. (BRGY. 8), BUTUAN CITY AGUSAN DEL NORTE" },
+    { company:"Penshoppe Savemore Tacloban", aliases:["P-BTQ Savemore Tacloban"], address:"GF Unit 125-126, SM Savemore Market Tacloban, J. Romualdez St., Tacloban City, Leyte" },
+    { company:"Oxygen SM City GENSAN", aliases:["O2-BTQ SM City Gen. Santos"], address:"# 141-142 SM City Gensan Cor Santiago Blvd and San Miguel St General Santos City" },
+    { company:"X079- Oxygen-BTQ SM City Bacolod", aliases:["Oxygen-BTQ SM City Bacolod"], address:"Oxygen SMBD 150 Bldg B, SM City Bacolod, Brgy 062, Poblacion Reclamation Area, Bacolod City" },
+    { company:"Regatta SM City Iloilo", aliases:["R-BTQ SM City Iloilo"], address:"Unit 1012 Uppergroundfloor SM City Iloilo, Benigno Aquino Ave. Mandurriao Iloilo City" },
+    { company:"Memo Robinsons Iligan", aliases:["M-BTQ Robinsons Iligan"], address:"Stall # 157 - 158B G/F Robinsons Place, Macapagal Highway Tubod Iligan City" },
+    { company:"Forme Robinsons Iligan", aliases:["F-BTQ Robinsons Iligan"], address:"Stall # 159 - 160 G/F Robinsons Place, Macapagal Highway Tubod Iligan City" },
+    { company:"Penshoppe Sindangan", aliases:["P-BTQ Sindangan"], address:"SMCT Property/DES Appliance New Building, Ninoy Aquino Boulevard, Poblacion, Sindangan, Zamboanga del Norte" },
+    { company:"X024- Oxygen BTQ Ayala Center Cebu", aliases:["O2-BTQ Ayala Center Cebu"], address:"Level 2, Space 248, Ayala Center Cebu, Cebu Business Park, Cebu City" },
+    { company:"Oxygen Robinsons Valencia", aliases:["O2-BTQ Robinsons Valencia"], address:"Level 1, Robinsons Place Valencia, Hagkol, Bagontaas, Valencia, Bukidnon" },
+    { company:"Regatta Robinsons Valencia", aliases:["R-BTQ Robinsons Valencia"], address:"Level 1, Robinsons Place Valencia, Hagkol, Bagontaas, Valencia, Bukidnon" },
+    { company:"Forme SM Lanang Premier Davao", aliases:["F-BTQ SM Lanang Premier"], address:"Unit 204, 2nd floor, SM Lanang Premier, J.P. Laurel Avenue, Davao City" },
+    { company:"X195- Oxygen BTQ Gmall Toril Davao", aliases:["O2-BTQ Gmall Toril Davao"], address:"UGF Gaisano Mall Toril Davao City, Davao Del Sur" },
+    { company:"P052- Penshoppe Boutique SM City Cebu", aliases:["Penshoppe SM City Cebu","P-BTQ SM City Cebu"], address:"Unit B1102-3, UGF, SM City Cebu, North Reclamation Area, Cebu City" },
+    { company:"Forme Robinsons Ormoc", aliases:["F-BTQ Robinsons Place Ormoc"], address:"LEVEL 1 – TENANT 134-135A ROBINSONS PLACE ORMOC, BRGY. COGON, ORMOC CITY 6541" },
+    { company:"Penshoppe Accessories Primark Tacurong", aliases:["P-BTQ Accs Primark Tacurong"], address:"Magsaysay Avenue, Bonifacio Street, Tacurong City, Sultan Kudarat" },
+    { company:"Forme Robinsons Place Butuan", aliases:["Forme Robinsons Butuan","F-BTQ Robinsons Place Butuan"], address:"Level 1 EXP 1-132, 1-133A Robinsons Place, Brgy. Bayanihan, Butuan City" },
+    { company:"Forme KCC GENSAN", aliases:["F-BTQ KCC Mall Gen. Santos"], address:"Unit B8-0009A/B upper G/F, KCC Mall of Gensan, J. Catolico Ave., General Santos City" }
+  ];
   const MONTH_MAP = {
     jan: "January", feb: "February", mar: "March", apr: "April", may: "May", jun: "June",
     jul: "July", aug: "August", sep: "September", oct: "October", nov: "November", dec: "December"
@@ -188,7 +221,7 @@
       if (heading.test(raw)) harvest(i+1,'heading');
       const colon = raw.match(/^([^:]{3,62}):\s*(.+)$/);
       if (colon && heading.test(colon[1])) harvest(i+1,'heading',colon[2]);
-      if (issueKey.length >= 12 && normalizeKey(raw) === issueKey) harvest(i+1,'original-request');
+      if (issueKey.length >= 12 && normalizeKey(raw) === issueKey) harvest(i+1,'original-request',raw);
     });
     // Bare lists and work paragraphs occur often in the oldest customer reply.
     // Prefer a consecutive list, or a *clearly worded* requested work sentence.
@@ -295,6 +328,54 @@
     return candidates[0];
   }
 
+  function comparablePlace(value = "") {
+    return normalizeSpace(value)
+      .toLowerCase()
+      .replace(/\b(?:stall|store|branch|outlet|site)\s*#?\s*:?/g, " ")
+      .replace(/\b(?:x|p|r|f|m|o2)\d{2,4}\s*[-–—]?\s*/g, " ")
+      .replace(/\b(?:btq|boutique)\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function samePlaceLabel(a, b) {
+    const x = comparablePlace(a), y = comparablePlace(b);
+    if (!x || !y) return false;
+    return x === y || (x.length >= 10 && y.length >= 10 && (x.includes(y) || y.includes(x)));
+  }
+
+  function addressStrength(value = "") {
+    const v = normalizeSpace(value);
+    if (!v || REGION_ONLY.has(v.toUpperCase())) return 0;
+    let score = 0;
+    if (/\d/.test(v)) score += 22;
+    if (/\b(?:unit|stall|space|tenant|level|floor|g\/?f|ugf|2\/?f|1\/?f|3\/?f|4\/?f|bldg|building|mall|robinsons|sm\s+city|kcc|gaisano|plaza|property)\b/i.test(v)) score += 24;
+    if (/\b(?:street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd\.?|highway|hwy\.?|brgy\.?|barangay|poblacion|reclamation|business\s+park)\b/i.test(v)) score += 28;
+    if (/\b(?:city|province|del\s+norte|del\s+sur|bukidnon|leyte|iloilo|cebu|davao|cotabato|zamboanga|gensan|general\s+santos|bacolod|butuan|ormoc|tacurong)\b/i.test(v)) score += 18;
+    if (/,/.test(v)) score += 8;
+    if (v.length >= 30) score += 10;
+    return score;
+  }
+
+  function findKnownSite(companyName = "", storeName = "") {
+    const keys = [storeName, companyName].map(comparablePlace).filter(Boolean);
+    if (!keys.length) return null;
+    let best = null;
+    for (const entry of SITE_KNOWLEDGE) {
+      const names = [entry.company].concat(entry.aliases || []).map(comparablePlace).filter(Boolean);
+      for (const key of keys) {
+        for (const name of names) {
+          if (key === name || (key.length >= 12 && name.length >= 12 && (key.includes(name) || name.includes(key)))) {
+            const score = key === name ? 100 : Math.min(key.length, name.length);
+            if (!best || score > best.score) best = { ...entry, score };
+          }
+        }
+      }
+    }
+    return best;
+  }
+
   function addressLooksReal(value) {
     const v=normalizeSpace(value);
     if (!v || REGION_ONLY.has(v.toUpperCase()) || /^(?:philippines|manila|cebu|laguna|metro\s+manila|ncr|city|province)$/i.test(v)) return false;
@@ -374,16 +455,42 @@
     const schedules=scheduleCandidates(src);
     const visitSchedule=schedules.length?schedules[0].value:'';
 
-    const addressOptions=sectionCandidates(src,[
-      {rx:/^(?:Customer\s*Location\s*Address|Complete\s*Site\s*Address|Site\s*Address|Store\s*Address|Branch\s*Address|Service\s*Address|On.?site\s*Address|Full\s*Address|Installation\s*Address|Office\s*Address|Outlet\s*Address|Work\s*Location|Location\s*Address|Delivery\s*Address|Physical\s*Address|Location\s*Details|Address\s*of\s*Site)\s*[:=\-]?\s*(.*)$/i,score:145,label:'Location Address'},
-      {rx:/^(?:Location|Service\s*Location|Site\s*Location|Store\s*Location|Branch\s*Location|Venue|Address|Where|Place)(?:\s*(?:of\s*work|for\s*service))?\s*[:=\-]\s*(.*)$/i,score:116,label:'Address'},
-      {rx:/^(?:Customer\s*Location\s*Address|Location\s*Address|Site\s*Address|Full\s*Address|Address|Service\s*Location)\s*\*?$/i,score:97,label:'Address'},
-      {rx:/^(?:Located\s+at|Situated\s+at|Our\s+store\s+is\s+at|The\s+site\s+is\s+at|Service\s+at)\s+(.+)$/i,score:76,label:'Address'}
+    let addressOptions=sectionCandidates(src,[
+      // The original client request's Address line is the strongest source.
+      {rx:/^Address\s*:\s*(.*)$/i,score:245,label:'Explicit Request Address'},
+      {rx:/^(?:Complete\s*Site\s*Address|Site\s*Address|Store\s*Address|Branch\s*Address|Service\s*Address|On.?site\s*Address|Full\s*Address|Installation\s*Address|Office\s*Address|Outlet\s*Address|Delivery\s*Address|Physical\s*Address|Address\s*of\s*Site)\s*[:=\-]\s*(.*)$/i,score:220,label:'Explicit Site Address'},
+      // Zoho Customer Location Address is useful only if it actually looks like
+      // a street/site address. Many GABC records contain just "Mindanao",
+      // "Visayas", or the store name here, so it must not outrank Address:.
+      {rx:/^Customer\s*Location\s*Address\s*[:=\-]?\s*(.*)$/i,score:105,label:'Zoho Customer Location Address'},
+      {rx:/^(?:Work\s*Location|Location\s*Address|Location\s*Details)\s*[:=\-]?\s*(.*)$/i,score:150,label:'Location Address'},
+      {rx:/^(?:Location|Service\s*Location|Site\s*Location|Store\s*Location|Branch\s*Location|Venue|Where|Place)(?:\s*(?:of\s*work|for\s*service))?\s*[:=\-]\s*(.*)$/i,score:126,label:'Address'},
+      {rx:/^(?:Customer\s*Location\s*Address|Location\s*Address|Site\s*Address|Full\s*Address|Address|Service\s*Location)\s*\*?$/i,score:92,label:'Address'},
+      {rx:/^(?:Located\s+at|Situated\s+at|Our\s+store\s+is\s+at|The\s+site\s+is\s+at|Service\s+at)\s+(.+)$/i,score:120,label:'Address'}
     ]).filter(c=>addressLooksReal(c.value));
-    // Generic street address in a signature is often AMTI/SANDZ's office;
-    // prefer the customer's explicit service/site address above it.
+
+    // Company Name and Location Address are different concepts. Never accept a
+    // location candidate that is simply the store/site name repeated by Zoho.
+    addressOptions = addressOptions
+      .filter(c => !samePlaceLabel(c.value, companyName) && !samePlaceLabel(c.value, storeName))
+      .map(c => ({ ...c, score: c.score + Math.min(45, addressStrength(c.value)) }));
+
+    // Generic street addresses in signatures are often AMTI/SANDZ offices;
+    // sectionCandidates already penalizes signature context. Prefer the best
+    // remaining physical address from the current ticket.
     let locationAddress=selectedValue(addressOptions).value||'';
-    locationAddress=normalizeSpace(locationAddress.replace(/^Stall\s*#\s*:\s*/i,''));
+    locationAddress=normalizeSpace(locationAddress.replace(/^Stall\s*#\s*:\s*/i,'').replace(/^#\s*:\s*/i,''));
+
+    // Knowledge-base fallback: only when the current ticket does not contain a
+    // reliable physical address. Never overwrite a valid explicit Address:.
+    let locationSource = locationAddress ? 'ticket' : '';
+    if (!locationAddress || addressStrength(locationAddress) < 20) {
+      const known = findKnownSite(companyName, storeName);
+      if (known?.address) {
+        locationAddress = normalizeSpace(known.address);
+        locationSource = 'knowledge';
+      }
+    }
 
     const ticketCategory=fieldAfterLabel(src,['Ticket Category','Ticket Category*']);
     const issueCategory=fieldAfterLabel(src,['Issue Category','Issue Category*']);
@@ -404,6 +511,7 @@
       visit_schedule:visitSchedule,
       created_date:todayPH(),
       location_address:locationAddress,
+      location_source:locationSource,
       ticket_category:validValue(ticketCategory)?normalizeSpace(ticketCategory):'',
       issue_category:validValue(issueCategory)?normalizeSpace(issueCategory):'',
       issue_description:issueDescription,
@@ -470,11 +578,13 @@
     const d = data || {};
 
     if (!String(d.ticket_number || "").replace(/\D/g, "")) warnings.push("Ticket number is missing.");
-    if (!normalizeSpace(d.company_name)) warnings.push("Customer company is missing.");
+    if (!normalizeSpace(d.company_name)) warnings.push("Company Name / Store-Site is missing.");
     // The store/site IS the desired Company Name on this CSA; do not flag that
     // as a mismatch. Flag only an unconfirmed fallback with no site information.
     if (normalizeSpace(d.company_name) && !normalizeSpace(d.store_name) && /^GABC[_-]/i.test(d.company_name)) warnings.push("Please check the store or site name.");
-    if (!normalizeSpace(d.location_address)) warnings.push("Full location address is missing or only a region was detected.");
+    if (!normalizeSpace(d.location_address)) warnings.push("Full physical location address is missing. Do not use the Company/Store name or a region as the Location Address.");
+    if (normalizeSpace(d.location_address) && samePlaceLabel(d.location_address, d.company_name)) warnings.push("Location Address matches Company Name; replace it with the full physical site address.");
+    if (d.location_source === 'knowledge') notes.push("Location Address was filled from the CSA site knowledge base because no reliable physical address was found in the pasted ticket. Review before download.");
     if (!normalizeSpace(d.visit_schedule)) warnings.push("Customer visit schedule was not detected.");
     if (!normalizeSpace(d.serial_number)) warnings.push("Serial number was not detected.");
     if (!Array.isArray(d.engineer_tasks) || !d.engineer_tasks.length) warnings.push("Engineer Task / Activity is empty.");
@@ -502,6 +612,9 @@
     todayPH,
     normalizeSchedule,
     normalizeSpace,
-    parseScheduleFragment
+    parseScheduleFragment,
+    siteKnowledge: SITE_KNOWLEDGE,
+    findKnownSite,
+    addressStrength
   };
 })();
