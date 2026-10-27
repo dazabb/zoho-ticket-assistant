@@ -51,11 +51,13 @@
       getField(proposed, 'Subject'),
       getField(proposed, 'Description'),
       getField(proposed, 'Issue Description'),
+      getField(proposed, 'Issue/Request'),
+      getField(source, 'Issue/Request'),
       getField(source, 'Subject'),
       getField(source, 'Description'),
       getField(source, 'Issue Description')
     ].filter(Boolean).join(' ');
-    if (focused) return focused;
+    if (focused) return focused + ' ' + String(source||'').slice(0,1400);
     // Fresh prompts sometimes have no labels; use only the opening text.
     return String(source || proposed || '').slice(0, 1200);
   }
@@ -68,10 +70,17 @@
     const hasSlowness = /\b(?:slowness|slow(?:er|ly)?|sluggish|latency|performance|degradation|lag|unresponsive|resource\s+bottleneck)\b/i.test(caseText);
     const hasActualAuthProblem = /\b(?:access\s+denied|permission\s+denied|authentication\s+failed|invalid\s+(?:credentials|password)|login\s+failed|unauthori[sz]ed|forbidden|\b403\b|\b401\b)\b/i.test(caseText);
     const hasCapacity = /\b(?:no\s+space\s+left|out\s+of\s+space|low\s+disk\s+space|repository\s+full|capacity\s+(?:limit|exhausted)|storage\s+(?:full|nearly\s+full))\b/i.test(caseText);
-    const hasJobFailure = /\b(?:failed|failure|job\s+error|backup\s+error|corrupt|incomplete\s+backup|job\s+timed\s+out|backup\s+job\s+timeout)\b/i.test(caseText);
+    const hasJobFailure = /\b(?:failed|failure|job\s+stopped|backup\s+job\s+(?:was\s+)?stopped|job\s+error|backup\s+error|corrupt|incomplete\s+backup|job\s+timed\s+out|backup\s+job\s+timeout)\b/i.test(caseText);
     const existing = sameAllowed(raw);
     if (hasSlowness && !hasActualAuthProblem && (raw.toLowerCase() === 'performance issue' || raw === 'Access Issue' || !existing)) {
       return {applies:true,value:'Check Backup Retention and Performance',reason:'observed-slowdown'};
+    }
+    // A failed backup job with an unreachable agent is an operational job failure,
+    // NOT a Zoho permission or credential problem. Previously Access Issue won
+    // just because it was a valid dropdown option, producing profile-dependent results.
+    const agentUnreachable = /\b(?:unreachable\s+agent|agent\s+unreachable|TN_ERR_CONNECT_SERV|server\s+does\s+not\s+accept\s+the\s+connection)\b/i.test(caseText);
+    if(hasJobFailure && agentUnreachable && !hasActualAuthProblem && (!existing || existing === 'Access Issue')) {
+      return {applies:true,value:'Reliability Issue',reason:'failed-backup-job-unreachable-agent'};
     }
     if (existing) return {applies:true,value:existing,reason:'valid-exact-choice'};
     if (hasActualAuthProblem) return {applies:true,value:'Access Issue',reason:'verified-access-or-authentication-error'};
@@ -111,6 +120,6 @@
     payload.subcategoryValidation=d.reason;
     return payload;
   }
-  const POLICY = `CONFIRMED ZOHO BACKUP - INCIDENT SUBCATEGORY DROPDOWN (EXACT VALUES):\n${ALLOWED.map(x=>'- '+x).join('\n')}\n- Never write Performance Issue for Backup - Incident: it is not an option.\n- If the observed issue is slow backup server processing, Restore and Archive slowness, or a performance degradation without authentication failure, use Check Backup Retention and Performance.\n- If an actual backup job failed unexpectedly, prefer Reliability Issue unless a more specific supported option clearly matches.\n- Choose Access Issue only with authentication, credentials, or permissions evidence; "cannot access Restore and Archive" accompanied by slowness is not automatically an access permission issue.\n- If uncertain, write Issue Subcategory: Verify in Zoho Desk and leave the actual Zoho dropdown unselected.\n- Never apply this list to Disaster Recovery - Incident or other Issue Categories.\n- Ticket #112374 EWB, Atempo Time Navigator 4.9.3, severe Linux backup-server slowness impacting Restore and Archive: Backup - Incident -> Check Backup Retention and Performance (recommended).`;
+  const POLICY = `CONFIRMED ZOHO BACKUP - INCIDENT SUBCATEGORY DROPDOWN (EXACT VALUES):\n${ALLOWED.map(x=>'- '+x).join('\n')}\n- Never write Performance Issue for Backup - Incident: it is not an option.\n- If the observed issue is slow backup server processing, Restore and Archive slowness, or a performance degradation without authentication failure, use Check Backup Retention and Performance.\n- If an actual backup job failed unexpectedly, prefer Reliability Issue. For TN_ERR_CONNECT_SERV or unreachable backup agent, an AI guess of Access Issue must be corrected to Reliability Issue unless the source explicitly documents authentication/permission failure.\n- Choose Access Issue only with authentication, credentials, or permissions evidence; "cannot access Restore and Archive" accompanied by slowness is not automatically an access permission issue.\n- If uncertain, write Issue Subcategory: Verify in Zoho Desk and leave the actual Zoho dropdown unselected.\n- Never apply this list to Disaster Recovery - Incident or other Issue Categories.\n- Ticket #112374 EWB, Atempo Time Navigator 4.9.3, severe Linux backup-server slowness impacting Restore and Archive: Backup - Incident -> Check Backup Retention and Performance (recommended).`;
   return {ALLOWED,isBackupIncident,choose,correctTicketText,correctPayload,POLICY};
 });

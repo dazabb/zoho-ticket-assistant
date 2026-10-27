@@ -994,7 +994,7 @@ Severity answer structure:
       {title:"Zoho classification",keys:["Ticket Category","Issue Category","Issue Subcategory","Issue Sub-Category","Severity","Priority","Supported Portfolio","Technology/Platform","Ticket Owner","Solutions"]},
       {title:"Assignment · reference contacts (verify current ownership)",keys:["SE's that can handle this ticket","PM/SD of this account"]}
     ];
-    let html = `<section class="ticket-result-card"><div class="result-header"><div class="result-heading"><span class="result-icon">Z</span><div><span class="result-title">Zoho Ticket Autofill</span><span class="result-subtitle">Ticket fields and internal notes</span></div></div><div class="result-action-set"><button type="button" class="result-copy" data-draft-email="1">Draft client email</button><button type="button" class="result-copy" data-copy-result="ticket">Copy Zoho fields</button></div></div>`;
+    let html = `<section class="ticket-result-card"><div class="result-header"><div class="result-heading"><span class="result-icon">Z</span><div><span class="result-title">Zoho Ticket Autofill</span><span class="result-subtitle">Ticket fields and internal notes</span></div></div><div class="result-action-set"><button type="button" class="result-copy" data-draft-email="1">Open client email</button><button type="button" class="result-copy" data-copy-result="ticket">Copy Zoho fields</button></div></div>`;
     for (const section of sections) {
       const fields = parsed.fields.filter(function (field) { return section.keys.includes(field.name); });
       if (!fields.length) continue;
@@ -1138,6 +1138,8 @@ Severity answer structure:
       workspace: String(workspace || DEFAULT_WORKSPACE),
       chatMessages: String(chatMessages || ""),
       chatConversation: Array.isArray(chatConversation) ? chatConversation : [],
+      modeChats: {zoho: String(chatMessages || ''), email: '', qa: ''},
+      modeConversations: {zoho: Array.isArray(chatConversation) ? chatConversation : [], email: [], qa: []},
       lastPromptedAccount: "",
       lastContextResetAt: "",
       createdAt: now,
@@ -1149,6 +1151,56 @@ Severity answer structure:
     return state.chatSessions.find(function (session) {
       return session.id === state.activeSessionId;
     }) || null;
+  }
+
+  function ensureModeChats(session) {
+    if(!session) return;
+    if (!session.modeChats || typeof session.modeChats !== 'object')
+      session.modeChats = {zoho:session.chatMessages||'',email:'',qa:''};
+    if (!session.modeConversations || typeof session.modeConversations !== 'object')
+      session.modeConversations = {zoho:session.chatConversation||[],email:[],qa:[]};
+    for(const type of ['zoho','email','qa']) {
+      if(typeof session.modeChats[type] !== 'string')session.modeChats[type]='';
+      if(!Array.isArray(session.modeConversations[type]))session.modeConversations[type]=[];
+    }
+  }
+
+  function selectOutputMode(mode) {
+    if(!['zoho','email','qa'].includes(mode)) return;
+    // Each tab is its own chat and has its own AI history. The selected
+    // customer session still controls isolation across companies and profiles.
+    const session=getActiveSession();
+    if(session) {persistChatMessages();persistConversation();ensureModeChats(session);}
+    state.outputMode=mode;
+    if(session) {
+      state.chatConversation=session.modeConversations[mode].slice();
+      state.suppressSessionPersistence=true;
+      const box=$('chat-messages');
+      if(box){box.innerHTML=repairText(session.modeChats[mode]||'');box.scrollTop=box.scrollHeight;}
+      state.suppressSessionPersistence=false;
+    }
+    document.querySelectorAll('[data-output-mode]').forEach(button=>{
+      const selected=button.dataset.outputMode===mode;
+      button.classList.toggle('active',selected);
+      button.setAttribute('aria-pressed',String(selected));
+    });
+    const input=$('chat-input');
+    if(input) input.placeholder=mode==='zoho' ? 'Paste a ticket, alert, or screenshot...' :
+      mode==='email' ? 'Ask for changes to the client email...' :
+      'Ask a question about troubleshooting...';
+  }
+
+  function appendCompanion(mode, userText, aiText) {
+    // Temporarily target the other output area, then restore the user's tab.
+    const selected=state.outputMode;
+    selectOutputMode(mode);
+    addMessage(userText, 'user');
+    addMessage(aiText, 'ai', {mode:mode==='email'?'email':'qa'});
+    // Store only this output's history, never the Zoho prompt or images.
+    state.chatConversation.push({role:'user',parts:[{text:'Draft prepared from the validated Zoho ticket.'}]});
+    state.chatConversation.push({role:'model',parts:[{text:aiText}]});
+    persistConversation();
+    selectOutputMode(selected);
   }
 
   function getNextSessionName() {
@@ -1202,8 +1254,9 @@ Severity answer structure:
     if (!session) return;
     state.suppressSessionPersistence = true;
     state.pendingFreshAccountContext = false;
-    state.chatConversation = Array.isArray(session.chatConversation)
-      ? session.chatConversation.slice()
+    ensureModeChats(session);
+    state.chatConversation = Array.isArray(session.modeConversations[state.outputMode])
+      ? session.modeConversations[state.outputMode].slice()
       : [];
     if (window.editor) {
       session.workspace = repairText(session.workspace || DEFAULT_WORKSPACE);
@@ -1211,7 +1264,7 @@ Severity answer structure:
       window.lastSavedCode = getEditorText();
     }
     if ($("chat-messages")) {
-      $("chat-messages").innerHTML = repairText(session.chatMessages || "");
+      $("chat-messages").innerHTML = repairText(session.modeChats[state.outputMode] || "");
       upgradeSavedTicketMessages();
       $("chat-messages").scrollTop = $("chat-messages").scrollHeight;
     }
@@ -1243,6 +1296,10 @@ Severity answer structure:
             workspace: String(session && session.workspace || DEFAULT_WORKSPACE),
             chatMessages: String(session && session.chatMessages || ""),
             chatConversation: Array.isArray(session && session.chatConversation) ? session.chatConversation : [],
+            modeChats: session && session.modeChats && typeof session.modeChats === 'object'
+              ? {...session.modeChats} : {zoho: String(session && session.chatMessages || ''), email: '', qa: ''},
+            modeConversations: session && session.modeConversations && typeof session.modeConversations === 'object'
+              ? {...session.modeConversations} : {zoho: Array.isArray(session && session.chatConversation) ? session.chatConversation : [], email: [], qa: []},
             lastPromptedAccount: String(session && session.lastPromptedAccount || ""),
             lastContextResetAt: String(session && session.lastContextResetAt || ""),
             createdAt: String(session && session.createdAt || new Date().toISOString()),
@@ -1919,7 +1976,9 @@ Severity answer structure:
     if (state.suppressSessionPersistence) return;
     const session = getActiveSession();
     if (!session) return;
-    session.chatMessages = $("chat-messages") ? $("chat-messages").innerHTML : "";
+    ensureModeChats(session);
+    session.modeChats[state.outputMode] = $("chat-messages") ? $("chat-messages").innerHTML : "";
+    if (state.outputMode === 'zoho')session.chatMessages=session.modeChats.zoho;
     markActiveSessionUpdated();
   }
 
@@ -1927,12 +1986,15 @@ Severity answer structure:
     if (state.suppressSessionPersistence) return;
     const session = getActiveSession();
     if (!session) return;
-    session.chatConversation = state.chatConversation.slice();
+    ensureModeChats(session);
+    session.modeConversations[state.outputMode] = state.chatConversation.slice();
+    if(state.outputMode==='zoho')session.chatConversation=state.chatConversation.slice();
     markActiveSessionUpdated();
   }
 
   function setLoading(isLoading) {
     state.isSending = isLoading;
+    document.querySelectorAll('[data-output-mode]').forEach(button=>button.disabled=isLoading);
     $("loading-indicator").classList.toggle("active", isLoading);
     $("send-button").disabled = isLoading;
   }
@@ -2747,6 +2809,7 @@ Severity answer structure:
       window.MAURequestSafety?.POLICY || '',
       window.MAUBackupSubcategories?.POLICY || '',
       window.MAUZohoMap?.POLICY || '',
+      window.MAUTicketConsistency?.POLICY || '',
       modeInstruction,
       freshAccountContext ? "Fresh account context: The latest user request is authoritative for this run. Ignore older visible ticket examples or screenshots from other accounts unless the user explicitly references them in the current message." : "",
       accountClassificationOverride,
@@ -3048,6 +3111,11 @@ Severity answer structure:
       }
       // Never let a reply intended for one customer contain another customer's
       // ticket subject. Stop it before chat display, copying, or autofill.
+      if (mode === 'standard' && window.MAUTicketConsistency) {
+        const checked=window.MAUTicketConsistency.fixZohoText(normalizedReply,combinedInput);
+        normalizedReply=checked.text;
+        classificationCorrections.push(...checked.changes);
+      }
       if (mode === 'standard' && lockedCustomer) {
         const nameLine=normalizedReply.match(/^\s*Customer Company Name:[ \t]*(.+)$/im);
         const subjectLine=normalizedReply.match(/^\s*Subject:[ \t]*(.+)$/im);
@@ -3079,6 +3147,14 @@ Severity answer structure:
       }
       if (mode === "standard") {
         updateWorkspaceFromAssistantReply(normalizedReply);
+        if (state.outputMode === 'zoho' && window.MAUTicketCompanions) {
+          const companions=window.MAUTicketCompanions.create(normalizedReply);
+          // Companion drafts are created from this exact validated ticket;
+          // zero extra Gemini requests, separate visible chat and follow-up history.
+          appendCompanion('email', 'Client email for the current ticket', companions.email);
+          appendCompanion('qa', 'Initial troubleshooting for the current ticket', companions.qa);
+          showSnackbar('Zoho ticket, client email and troubleshooting are ready in separate tabs.');
+        }
       }
     } catch (error) {
       if (state.activeProfileId === sendingProfile && state.activeSessionId === sendingSession)
@@ -3099,12 +3175,11 @@ Severity answer structure:
     state.chatConversation = [];
     state.pendingFreshAccountContext = false;
     const session = getActiveSession();
-    if (session) {
-      session.lastPromptedAccount = "";
-      session.lastContextResetAt = "";
+    if (session && state.outputMode === 'zoho') {
+      // Current customer remains selected; other tabs remain independent.
       markActiveSessionUpdated();
     }
-    showActiveCustomerLabel('');
+    showActiveCustomerLabel(session?.lastPromptedAccount||'');
     persistChatMessages();
     persistConversation();
     closeClearChatModal();
@@ -3263,25 +3338,9 @@ Severity answer structure:
     if (!state.listenersBound) {
       state.listenersBound = true;
       $("send-button").addEventListener("click", sendMessage);
-      document.querySelectorAll("[data-output-mode]").forEach(function (button) {
-        button.addEventListener("click", function () {
-          state.outputMode = button.dataset.outputMode;
-          document.querySelectorAll("[data-output-mode]").forEach(function (item) {
-            const selected = item === button;
-            item.classList.toggle("active", selected);
-            item.setAttribute("aria-pressed", String(selected));
-          });
-          const help = $("outputModeHelp");
-          if (help) help.textContent = state.outputMode === "email"
-            ? "Draft a customer-ready email from the incident details. No invented names, ticket numbers, or signature."
-            : state.outputMode === "qa"
-              ? "Ask about likely causes, safe first checks, or the best Zoho classification."
-              : "Generate Zoho fields and a separate internal troubleshooting comment.";
-          $("chat-input").placeholder = state.outputMode === "email"
-            ? "Paste the alert and details. Add the recipient and ticket number if available..."
-            : state.outputMode === "qa"
-              ? "Ask about symptoms, ticket classification, or next safe troubleshooting steps..."
-              : "Paste the monitoring alert, customer request, or incident details...";
+      document.querySelectorAll('[data-output-mode]').forEach(function(button){
+        button.addEventListener('click', function(){
+          if(!state.isSending)selectOutputMode(button.dataset.outputMode);
         });
       });
       $("chatNewChatBtn")?.addEventListener("click", quickNewChat);
@@ -3307,12 +3366,7 @@ Severity answer structure:
         if (emailButton) {
           const selectEmail = document.querySelector('[data-output-mode="email"]');
           if (selectEmail) selectEmail.click();
-          const input = $("chat-input");
-          if (input) {
-            input.value = "Draft a client email from the current Zoho ticket details. Include a ticket number or recipient only if supplied. ";
-            input.focus();
-          }
-          showSnackbar("Client Email selected. Add any missing recipient or ticket number, then send.");
+          showSnackbar("Client email is ready. Review it before sending to your customer.");
           return;
         }
         const copyButton = event.target.closest("[data-copy-result]");

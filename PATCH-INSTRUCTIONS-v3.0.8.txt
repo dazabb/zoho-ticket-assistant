@@ -1,0 +1,34 @@
+MAU Operation Desk — Ticket Consistency Patch v3.0.8
+
+Compatible with MAU Operation Desk v3.0.6 and the Monde Report v3.0.7 patch.
+
+Install
+1. Close the MAU browser tab.
+2. Extract this ZIP over the existing MAU / zoho-ticket-assistant app folder.
+   Keep the paths inside the ZIP: index.html and library/...
+3. Choose Replace / Overwrite when prompted.
+4. Run START-MAU-DESK.bat and refresh the browser (Ctrl + Shift + R).
+
+What this patch changes
+- Backup Incident: failed job due to unreachable agent / TN_ERR_CONNECT_SERV => Reliability Issue (not Access Issue).
+- Confirmed login/credential/permission problems can still use Access Issue.
+- Uses exact platform label Atempo Time Navigator (ATINA) when its signature is present.
+- Consistent EWB Atempo failed-job subjects and descriptions when a single Hostname is explicitly provided.
+- Zoho, Client email, and Troubleshooting are independent chat tabs with separate saved conversations.
+- When a Zoho ticket is generated, a client email and troubleshooting note are prepared automatically
+  from the same validated ticket, without additional Gemini requests.
+- The actual client email is NOT sent; it remains a draft for user review and copying.
+- Separate follow-up questions in the Client email and Troubleshooting chats still use Gemini and count as API requests.
+
+Files replaced
+index.html
+library/init.js
+library/backup-subcategory.js
+library/zoho-ui-autofill.js
+
+New files
+library/ticket-consistency.js
+library/ticket-companions.js
+
+Not changed: Monde Report, Viber Follow-up, CSA Generator, and Chrome extension.
+No API key is included.

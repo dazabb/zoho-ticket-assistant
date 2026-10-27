@@ -1003,6 +1003,7 @@
     if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(result, workspaceText);
     if (window.MAUBackupSubcategories) window.MAUBackupSubcategories.correctPayload(result, workspaceText);
     if (window.MAUZohoMap) window.MAUZohoMap.correctPayload(result, workspaceText);
+    if (window.MAUTicketConsistency) window.MAUTicketConsistency.fixPayload(result, workspaceText);
     return result;
   }
 
@@ -1184,6 +1185,7 @@
     if (window.MAURequestSafety) window.MAURequestSafety.fixPayload(payload,workspaceText);
     if (window.MAUBackupSubcategories) window.MAUBackupSubcategories.correctPayload(payload,workspaceText);
     if (window.MAUZohoMap) window.MAUZohoMap.correctPayload(payload,workspaceText);
+    if (window.MAUTicketConsistency) window.MAUTicketConsistency.fixPayload(payload,workspaceText);
     const guide = window.MAUZohoExtensionGuide;
     if (!guide || !(await guide.check())) {
       guide?.open();
