@@ -151,7 +151,8 @@
   }
   function validatedStorageResult(source,generated) {
     const findings=storageIncident(source,generated);
-    if(!findings.isStorageIncident) return null;
+    // This exact correction is for Dell Unity evidence, not every storage vendor.
+    if(!findings.isStorageIncident || findings.vendor !== 'Dell') return null;
     const db=databaseService(source,generated);
     const currentSubject=currentZohoSubject(source);
     const generatedSubject=pick(generated,'Subject');
@@ -160,7 +161,21 @@
     const concise='Dell Unity 380F Snapshot, Naming Services and File System Issues';
     const subject=db.service&&label?('SANDZ-'+(db.service==='MS'?'MSDCO':'SI')+'-'+label+'-'+concise):'';
     const knownAccount=sourceField(source,'Account Name');
-    return {findings,service:db.service,subject,
+    // The current ticket does not provide a filled Severity field. Use the
+    // existing SANDZ severity matrix, rather than writing a non-selectable
+    // "Verify" placeholder. Three concurrent faults (snapshot blocked,
+    // naming services failing and a degraded filesystem) constitute major
+    // storage-service degradation -> Sev2. Isolated faults remain Sev3.
+    // A genuinely supplied Zoho severity still wins.
+    const severityFromTicket=sourceField(source,'Severity Level') || sourceField(source,'Severity');
+    const severity=/^Sev[1-4]$/i.test(severityFromTicket) ?
+      'Sev'+severityFromTicket.match(/[1-4]/)[0] :
+      findings.stuck && findings.naming && findings.degraded ? 'Sev2' : 'Sev3';
+    const priorityBySeverity={Sev1:'High',Sev2:'Medium',Sev3:'Medium',Sev4:'Low'};
+    // Dell Unity is represented in the Supported Portfolio dropdown as Dell,
+    // not in the separate Technology/Platform dropdown. Its valid default
+    // there is Not Applicable, never Zadara or an invalid text placeholder.
+    return {findings,service:db.service,subject,severity,priority:priorityBySeverity[severity],platform:'Not Applicable',
       account:knownAccount&& !/^(?:RTVM\s+[-–]\s+Issue|Account Name)$/i.test(knownAccount)?knownAccount:'',
       existing:!!recentTicketId(source),
       issueSubcategory:findings.capacity?'Capacity Issue':'',
@@ -182,16 +197,14 @@
     update('Description',info.description);
     update(/(?:^|\n)\s*Issue Sub-Category:/i.test(text)?'Issue Sub-Category':'Issue Subcategory',info.issueSubcategory||'Verify in Zoho Desk');
     update('Supported Portfolio',info.findings.vendor||'Verify in Zoho Desk');
-    update('Technology/Platform','Verify in Zoho Desk'); // Dell Unity is not an available platform option.
+    update('Technology/Platform',info.platform); // Exact valid Zoho option; Dell remains Supported Portfolio.
     if(info.service)update('Solutions',info.service);
     else update('Solutions','Verify in Zoho Desk');
     if(info.subject) update('Subject',info.subject);
     if(info.account)update('Account Name',info.account);
-    // Keep the source facts but never invent a business impact or severity level.
-    const explicitSeverity=sourceField(source,'Severity Level') || sourceField(source,'Severity');
-    if(!/^Sev[1-4]$/i.test(explicitSeverity)) update('Severity','Verify in Zoho Desk');
-    const explicitPriority=sourceField(source,'Priority');
-    if(!/^(?:Low|Medium|High)$/i.test(explicitPriority))update('Priority','Verify in Zoho Desk');
+    // Use the same decision for all employee profiles and for autofill.
+    update('Severity',info.severity);
+    update('Priority',info.priority);
     const note=info.existing?'Existing Incident Ticket':'Incident Ticket';
     text=text.replace(/\b(?:New|Existing)\s+(?:Incident|Request)\s+Ticket\b/g,note);
     return {text,changes};
@@ -208,15 +221,15 @@
     if(f['Issue Description']!==undefined)f['Issue Description']=info.description;
     f['Issue Sub-Category']=info.issueSubcategory;
     f['Supported Portfolio']=info.findings.vendor||'';
-    f['Technology/Platform']=''; // Not in the supplied Zoho platform dropdown.
+    f['Technology/Platform']=info.platform;
     if(info.service)f.Solutions=info.service;
     else f.Solutions='';
     if(info.subject)f.Subject=info.subject;
     if(info.account)f['Account Name']=info.account;
-    if(!/^Sev[1-4]$/i.test(sourceField(source,'Severity Level')||sourceField(source,'Severity')))f['Severity Level']='';
-    if(!/^(?:Low|Medium|High)$/i.test(sourceField(source,'Priority')))f.Priority='';
+    f['Severity Level']=info.severity;
+    f.Priority=info.priority;
     if(payload.rawWorkspace)payload.rawWorkspace=fixStorageText(payload.rawWorkspace,evidence).text;
-    payload.classificationNote='Current storage failures take precedence over requested future maintenance; verify severity, contract, and unavailable platform dropdown.';
+    payload.classificationNote='Dell Unity storage incident: severity based on three concurrent faults; firmware assistance is a separate request. Review final ticket before saving.';
     return payload;
   }
   const earlierFixZohoText=fixZohoText;
@@ -256,6 +269,6 @@
     return enforceDatabasePayload(payload,source);
   }
   const POLICY='BACKUP INCIDENT FINAL CONSISTENCY: If the current backup job FAILED because an agent is unreachable (TN_ERR_CONNECT_SERV), select Reliability Issue, not Access Issue. Access Issue means confirmed permissions, login or authentication errors; an unreachable backup agent does not establish a credential problem. When Atempo Time Navigator, ATINA or its TN_ERR_CONNECT_SERV signature is evidenced, use the exact Zoho Technology/Platform option Atempo Time Navigator (ATINA). Never describe recommended checks as already completed. Do not infer a cause from the error message alone.';
-  const STORAGE_POLICY='MIXED STORAGE TICKET FINAL VALIDATION: Treat multiple existing Dell Unity storage failures (stuck snapshot, LDAP/DNS update failure, degraded file system) as an Incident even when the customer also requests a future firmware upgrade. Storage - Incident is the issue family. Capacity Issue is a possible valid subcategory when the stuck snapshot consumes documented storage capacity; never invent unsupported dropdowns. Dell Unity is a product, not Zadara. The Technology/Platform dropdown has no Dell option: leave it for review. Use the matching customer-project row in the embedded SI/MS DATABASE for Solutions and subject prefix (RTVM Unity project is SI), even if an existing Zoho subject uses MSDCO. Do not infer service type from generic maintenance, firmware or configuration words. Preserve explicit severity and priority only; do not infer impact or root cause. Avoid claiming troubleshooting was performed.';
+  const STORAGE_POLICY='MIXED STORAGE TICKET FINAL VALIDATION: Treat multiple existing Dell Unity storage failures (stuck snapshot, LDAP/DNS update failure, degraded file system) as an Incident even when the customer also requests a future firmware upgrade. Storage - Incident is the issue family. Capacity Issue is a possible valid subcategory when the stuck snapshot consumes documented storage capacity; never invent unsupported dropdowns. Dell Unity is a product, not Zadara. The Technology/Platform dropdown has no Dell option: select the exact valid Not Applicable option and keep Dell under Supported Portfolio; never choose Zadara for Dell Unity. Use the matching customer-project row in the embedded SI/MS DATABASE for Solutions and subject prefix (RTVM Unity project is SI), even if an existing Zoho subject uses MSDCO. Do not infer service type from generic maintenance, firmware or configuration words. Apply the severity matrix consistently: where the current Dell Unity ticket documents a blocked snapshot, failing naming services and degraded file system together, select Sev2 with Medium priority; for an isolated issue with no wider degradation, select Sev3 with Medium priority. Respect a valid explicit source severity. Do not infer an outage or root cause. Avoid claiming troubleshooting was performed.';
   return {decide,fixZohoText:correctedText,fixPayload:correctedPayload,storageIncident,currentZohoSubject,validatedStorageResult,databaseService,POLICY:POLICY+'\n'+STORAGE_POLICY};
 });

@@ -1,40 +1,30 @@
-MAU Ticket Classification Patch — Database First (for v3.0.8)
+MAU Ticketing Field Fix — v3.0.8d
 
-Upload / replace these three existing files in your GitHub Pages repository:
+For the existing v3.0.8b (Database-First RTVM Fix).
+This patch does NOT include or require the cancelled Support Agent extension v3.0.8c.
 
-  library/init.js
-  library/service-line.js
-  library/ticket-consistency.js
+INSTALL
+1. Open your zoho-ticket-assistant repository.
+2. Replace library/ticket-consistency.js with this patch's matching file.
+3. Publish the updated GitHub Pages site.
+4. Reload MAU with Ctrl+Shift+R. Generate the ticket again to see corrected fields.
 
-Then publish the site and use Ctrl+Shift+R to refresh MAU.
-No browser extension reinstall is required.
+FOR RTVM TICKET #113329
+- Severity: Sev2 (three reported storage issues: blocked snapshot, failed naming services updates, degraded filesystem)
+- Priority: Medium (standard pairing for Sev2)
+- Supported Portfolio: Dell
+- Technology/Platform: Not Applicable (valid Zoho dropdown; Dell Unity is not a choice in that particular dropdown)
+- Solutions: SI (customer project database)
+- Subject prefix: SANDZ-SI
+- Ticket Category: Incident
+- Issue Category: Storage - Incident
+- Issue Subcategory: Capacity Issue
 
-What changed
-- Uses the supplied SI/MS Customer Database as the authority for service line.
-  A conflicting old Zoho ticket subject (such as MSDCO for RTVM) cannot
-  change a single-type SI project to MS.
-- RTVM's Unity maintenance project is SI; subject starts SANDZ-SI-RTVM-.
-- Existing RTVM Dell Unity 380F problems (hung snapshot, failed LDAP/DNS
-  configuration updates, degraded file system) map to Incident / Storage -
-  Incident. The firmware assistance remains a separate request within the issue.
-- The same RTVM evidence produces the same subject, summary, subcategory,
-  Solutions, portfolio and technology selection for different profiles.
-- Dell is the supported portfolio choice; Zadara is NOT inferred for Dell Unity.
-  Technology/Platform remains unselected because Dell Unity is not in the
-  supplied Zoho platform dropdown.
-- Restores the provided MONDE NISSIN Zerto MS and PASCUAL LAB BaaS MS rows
-  that were missing from the earlier embedded database snapshot.
-- An account with both MS and SI projects needs a matching project/product;
-  no arbitrary newest-record fallback.
-- The fix applies to both chat previews and the final Create Ticket payload.
-- Includes the previous Client Email accuracy improvements in init.js.
+Exact non-placeholder values are applied to the chat ticket and the Create Ticket payload.
+If a valid severity is already filled in the CURRENT Zoho ticket, it is preserved.
+The fallback for a single isolated storage issue stays Sev3; no claims of outage are invented.
+Other customers / services are not modified by this Dell Unity-specific rule.
 
-Automated validation
-- RTVM Mauris/JV variants return the same validated fields.
-- RTVM SI wins over MSDCO even when current Zoho title is MSDCO.
-- Firmware-only request remains a Request, despite RTVM's SI classification.
-- EWB / Monde keep MSDCO/MS; mixed DOE remains unconfirmed without a project.
-- Browser scripts loaded with no JavaScript page errors; actual live Zoho
-  dropdown interaction still requires checking on your site.
-
-Nothing in this patch sends mail or submits a ticket automatically.
+Tests: JS syntax and browser regression; variations of RTVM generated reply,
+Create Ticket fields, source-defined severity, other EWB tickets; passed.
+The Zoho web form itself was not edited or submitted in tests. Manually review before Save.
