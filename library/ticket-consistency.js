@@ -74,6 +74,188 @@
     if(/^Verify\b/i.test(f['Ticket Owner']||'') && /\b(?:ticket owner|exact account|account in Zoho)\b/i.test(f['Ticket Owner']||''))f['Ticket Owner']='Verify ticket owner in Zoho Desk';
     return payload;
   }
+
+  /* Current-ticket evidence wins over account/project history and the AI's own
+     proposed classification. Do not use a ticket list or an old forwarded chain. */
+  function currentZohoSubject(source) {
+    const raw=String(source||'');
+    // Zoho's ticket editor has its own title between SaveCancel and Reply All.
+    const editor=raw.match(/Save\s*Cancel\s*\n\s*([^\r\n]+)[\s\S]{0,650}?\bReply All\b/i);
+    if(editor && /^SANDZ[-–](?:MSDCO|SI)[-–]/i.test(editor[1].trim())) return editor[1].trim();
+    // Some copies have no SaveCancel but have a single current-ticket title.
+    const direct=raw.match(/(?:^|\n)\s*(?:Current Ticket Subject|Existing Zoho Subject)\s*:\s*(SANDZ[-–](?:MSDCO|SI)[-–][^\r\n]+)/i);
+    if(direct)return direct[1].trim();
+    const beforeReply=raw.match(/\n\s*(SANDZ[-–](?:MSDCO|SI)[-–][^\r\n]+)\s*\n\s*Reply All\b/i);
+    if(beforeReply)return beforeReply[1].trim();
+    return '';
+  }
+  function sourceField(source,field) {
+    const raw=String(source||'');
+    const fromProperties=raw.lastIndexOf('Ticket Properties');
+    const subjectBound=raw.indexOf('Reply All',Math.max(fromProperties,0));
+    const block=fromProperties>=0 ? raw.slice(fromProperties,subjectBound>fromProperties?subjectBound:undefined) : raw;
+    const re=new RegExp('(?:^|\\n)\\s*'+field.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*\\*?\\s*(?::\\s*|\\n\\s*)([^\\r\\n]+)','i');
+    const matched=block.match(re);
+    if(!matched)return '';
+    const value=matched[1].trim();
+    return /^(?:-None-|None|Verify|--?|dd MMM yyyy)$/i.test(value)?'':value;
+  }
+  function sourceEvidence(source) {
+    const raw=String(source||'');
+    // When pasted directly from Zoho, look at the current conversation rather
+    // than the unrelated tickets in the left-hand search results.
+    const conversation=raw.lastIndexOf('Reply All');
+    if(conversation>=0) {
+      const segment=raw.slice(conversation);
+      // Trim reply chains if the first message includes them; the earliest
+      // ticket email still provides the original observed issue.
+      return segment.slice(0,18000);
+    }
+    return raw.slice(0,18000);
+  }
+  function storageIncident(source,generated) {
+    const evidence=sourceEvidence(source);
+    const proposed=[pick(generated,'Subject'),pick(generated,'Description'),pick(generated,'Issue/Request')].join(' ');
+    const subject=evidence.length>70 ? evidence : proposed;
+    const hardware=/\b(?:Dell\s*(?:EMC\s*)?Unity|Unity\s*(?:380F|480F|550F)|storage\s+(?:array|pool|appliance)|NAS\s+server)\b/i.test(subject);
+    // Existing faults, unlike a proposed firmware update or health-report request.
+    const stuck=/(?:snapshot[^\n.]{0,130}(?:hung|stuck|frozen|destroying)|(?:hung|stuck|frozen)[^\n.]{0,90}snapshot)/i.test(subject);
+    const naming=/(?:LDAP|NIS|DNS|naming services)[\s\S]{0,180}(?:fail(?:ed|ure|s)?|unable\s+to\s+update|not\s+updating|old\s+IP|error)|(?:fail(?:ed|ure|s)?)[^\n.]{0,100}(?:LDAP|NIS|DNS)/i.test(subject);
+    const degraded=/\b(?:degraded\s+(?:file\s+system|FS|storage)|(?:file\s+system|FS)[^\n.]{0,45}degraded)\b/i.test(subject);
+    const significant=Number(stuck)+Number(naming)+Number(degraded);
+    const vendor=/\bDell\s*(?:EMC\s*)?Unity\b/i.test(subject)?'Dell':'';
+    return {isStorageIncident:hardware && significant>=2,stuck,naming,degraded,vendor,
+      capacity:stuck && /(?:\b\d+(?:\.\d+)?\s*(?:TB|GB)\b|consum(?:ing|es?)\s+\d+|insufficient\s+storage|full\s+pool)/i.test(subject)};
+  }
+  function recentTicketId(source) {
+    const raw=String(source||'');
+    const match=raw.match(/\bReply All\s*\n\s*#(\d{4,12})\b/i);
+    return match?match[1]:'';
+  }
+  // Match the same SI/MS database used by the prompt generator; the current
+  // Zoho subject is NOT service-line authority. Prefer the current ticket's
+  // account properties, not unrelated customer names in sidebar search results.
+  function databaseService(source, generated) {
+    const account = sourceField(source,'Account Name') || sourceField(source,'Customer Company Name')
+      || pick(generated,'Customer Company Name') || pick(generated,'Account Name');
+    const direct = /^\s*(?:Verify|None|-None-)\b/i.test(account) ? '' : account;
+    const focus = [direct,sourceEvidence(source)].filter(Boolean).join('\n');
+    const project = typeof window !== 'undefined' && window.MAUProjectDatabase;
+    let decision = project && typeof project.decide==='function' ? project.decide(focus) : null;
+    // If a screenshot has no ticket-properties section, use the explicit
+    // customer in the generated ticket rather than the sidebar of other cases.
+    if(!decision && direct && project && typeof project.decide==='function')decision=project.decide(direct);
+    const serviceApi = typeof window!=='undefined' ? window.MAUServiceLine : null;
+    const service = serviceApi ? serviceApi.resolve(focus, direct?{customer:direct}:null, decision) : null;
+    return {service:service?.confidence==='database'?service.type:'',decision,account:direct};
+  }
+  function validatedStorageResult(source,generated) {
+    const findings=storageIncident(source,generated);
+    if(!findings.isStorageIncident) return null;
+    const db=databaseService(source,generated);
+    const currentSubject=currentZohoSubject(source);
+    const generatedSubject=pick(generated,'Subject');
+    const label=(currentSubject||generatedSubject).match(/^SANDZ[-–](?:MSDCO|SI)[-–]([^\r\n-]+)[-–]/i)?.[1]
+      || (db.account ? db.account.replace(/\s*[-–]\s*Sandz\s*$/i,'') : '');
+    const concise='Dell Unity 380F Snapshot, Naming Services and File System Issues';
+    const subject=db.service&&label?('SANDZ-'+(db.service==='MS'?'MSDCO':'SI')+'-'+label+'-'+concise):'';
+    const knownAccount=sourceField(source,'Account Name');
+    return {findings,service:db.service,subject,
+      account:knownAccount&& !/^(?:RTVM\s+[-–]\s+Issue|Account Name)$/i.test(knownAccount)?knownAccount:'',
+      existing:!!recentTicketId(source),
+      issueSubcategory:findings.capacity?'Capacity Issue':'',
+      description:'Dell Unity 380F: snapshot stuck in destroying state; NAS LDAP/DNS naming services updates failing; file system degraded. Firmware upgrade assistance also requested.'};
+  }
+  function fixStorageText(raw,source) {
+    let text=String(raw||''); const changes=[];
+    if(!/(?:^|\n)\s*Ticket Category\s*:/i.test(text))return {text,changes};
+    // A generated answer alone is never proof of completed work.
+    const info=validatedStorageResult(source||'',text);
+    if(!info) return {text,changes};
+    function update(label,value){
+      const old=pick(text,label);
+      if(old===value || !new RegExp('(?:^|\\n)\\s*'+label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':','i').test(text)) return;
+      text=put(text,label,value);changes.push(label);
+    }
+    update('Ticket Category','Incident');
+    update('Issue Category','Storage - Incident');
+    update('Description',info.description);
+    update(/(?:^|\n)\s*Issue Sub-Category:/i.test(text)?'Issue Sub-Category':'Issue Subcategory',info.issueSubcategory||'Verify in Zoho Desk');
+    update('Supported Portfolio',info.findings.vendor||'Verify in Zoho Desk');
+    update('Technology/Platform','Verify in Zoho Desk'); // Dell Unity is not an available platform option.
+    if(info.service)update('Solutions',info.service);
+    else update('Solutions','Verify in Zoho Desk');
+    if(info.subject) update('Subject',info.subject);
+    if(info.account)update('Account Name',info.account);
+    // Keep the source facts but never invent a business impact or severity level.
+    const explicitSeverity=sourceField(source,'Severity Level') || sourceField(source,'Severity');
+    if(!/^Sev[1-4]$/i.test(explicitSeverity)) update('Severity','Verify in Zoho Desk');
+    const explicitPriority=sourceField(source,'Priority');
+    if(!/^(?:Low|Medium|High)$/i.test(explicitPriority))update('Priority','Verify in Zoho Desk');
+    const note=info.existing?'Existing Incident Ticket':'Incident Ticket';
+    text=text.replace(/\b(?:New|Existing)\s+(?:Incident|Request)\s+Ticket\b/g,note);
+    return {text,changes};
+  }
+  function fixStoragePayload(payload,source){
+    if(!payload||!payload.fields)return payload;
+    const f=payload.fields;
+    const evidence=[source||'',payload.rawWorkspace||''].filter(Boolean).join('\n');
+    const info=validatedStorageResult(evidence,Object.entries(f).map(([k,v])=>k+': '+v).join('\n'));
+    if(!info)return payload;
+    f['Ticket Category']='Incident';
+    f['Issue Category']='Storage - Incident';
+    f.Description=info.description;
+    if(f['Issue Description']!==undefined)f['Issue Description']=info.description;
+    f['Issue Sub-Category']=info.issueSubcategory;
+    f['Supported Portfolio']=info.findings.vendor||'';
+    f['Technology/Platform']=''; // Not in the supplied Zoho platform dropdown.
+    if(info.service)f.Solutions=info.service;
+    else f.Solutions='';
+    if(info.subject)f.Subject=info.subject;
+    if(info.account)f['Account Name']=info.account;
+    if(!/^Sev[1-4]$/i.test(sourceField(source,'Severity Level')||sourceField(source,'Severity')))f['Severity Level']='';
+    if(!/^(?:Low|Medium|High)$/i.test(sourceField(source,'Priority')))f.Priority='';
+    if(payload.rawWorkspace)payload.rawWorkspace=fixStorageText(payload.rawWorkspace,evidence).text;
+    payload.classificationNote='Current storage failures take precedence over requested future maintenance; verify severity, contract, and unavailable platform dropdown.';
+    return payload;
+  }
+  const earlierFixZohoText=fixZohoText;
+  const earlierFixPayload=fixPayload;
+  function enforceDatabaseText(raw,source){
+    let text=String(raw||'');const changes=[];
+    if(!/(?:^|\n)\s*Subject\s*:/i.test(text))return {text,changes};
+    const db=databaseService(source,text);
+    if(!db.service)return {text,changes};
+    const existing=pick(text,'Subject');
+    const api=typeof window!=='undefined'?window.MAUServiceLine:null;
+    const fixed=api?.enforceSubject(existing,db.service)||existing;
+    if(existing!==fixed){text=put(text,'Subject',fixed);changes.push('Subject prefix');}
+    if(pick(text,'Solutions')!==db.service){text=put(text,'Solutions',db.service);changes.push('Solutions');}
+    return {text,changes};
+  }
+  function enforceDatabasePayload(payload,source){
+    if(!payload?.fields)return payload;
+    const f=payload.fields;
+    const db=databaseService(source||payload.rawWorkspace||'',Object.entries(f).map(([k,v])=>k+': '+v).join('\n'));
+    if(!db.service)return payload;
+    const api=typeof window!=='undefined'?window.MAUServiceLine:null;
+    if(f.Subject)f.Subject=api?.enforceSubject(f.Subject,db.service)||f.Subject;
+    f.Solutions=db.service;
+    if(payload.rawWorkspace)payload.rawWorkspace=enforceDatabaseText(payload.rawWorkspace,source||payload.rawWorkspace).text;
+    return payload;
+  }
+  function correctedText(text,source){
+    const first=earlierFixZohoText(text,source);
+    const last=fixStorageText(first.text,source);
+    const service=enforceDatabaseText(last.text,source);
+    return {text:service.text,changes:[...first.changes,...last.changes,...service.changes]};
+  }
+  function correctedPayload(payload,source){
+    earlierFixPayload(payload,source);
+    fixStoragePayload(payload,source);
+    return enforceDatabasePayload(payload,source);
+  }
   const POLICY='BACKUP INCIDENT FINAL CONSISTENCY: If the current backup job FAILED because an agent is unreachable (TN_ERR_CONNECT_SERV), select Reliability Issue, not Access Issue. Access Issue means confirmed permissions, login or authentication errors; an unreachable backup agent does not establish a credential problem. When Atempo Time Navigator, ATINA or its TN_ERR_CONNECT_SERV signature is evidenced, use the exact Zoho Technology/Platform option Atempo Time Navigator (ATINA). Never describe recommended checks as already completed. Do not infer a cause from the error message alone.';
-  return {decide,fixZohoText,fixPayload,POLICY};
+  const STORAGE_POLICY='MIXED STORAGE TICKET FINAL VALIDATION: Treat multiple existing Dell Unity storage failures (stuck snapshot, LDAP/DNS update failure, degraded file system) as an Incident even when the customer also requests a future firmware upgrade. Storage - Incident is the issue family. Capacity Issue is a possible valid subcategory when the stuck snapshot consumes documented storage capacity; never invent unsupported dropdowns. Dell Unity is a product, not Zadara. The Technology/Platform dropdown has no Dell option: leave it for review. Use the matching customer-project row in the embedded SI/MS DATABASE for Solutions and subject prefix (RTVM Unity project is SI), even if an existing Zoho subject uses MSDCO. Do not infer service type from generic maintenance, firmware or configuration words. Preserve explicit severity and priority only; do not infer impact or root cause. Avoid claiming troubleshooting was performed.';
+  return {decide,fixZohoText:correctedText,fixPayload:correctedPayload,storageIncident,currentZohoSubject,validatedStorageResult,databaseService,POLICY:POLICY+'\n'+STORAGE_POLICY};
 });

@@ -1,6 +1,6 @@
-/* Distinguish MS versus SI from explicit Zoho Solutions, supported project,
- * and observed 2026 subject history. No generic maintenance keyword heuristic.
- * Historical prefixes are evidence only; manual service selection wins.
+/* Resolve the service line from the provided customer/project database FIRST.
+ * Existing Zoho subjects and historical ticket counts may contain errors.
+ * Do not turn Incident into MS or Request into SI: these are separate axes.
  */
 (function(root,factory){const api=factory();if(typeof module!=='undefined'&&module.exports)module.exports=api;if(root)root.MAUServiceLine=api;})(typeof window!=='undefined'?window:(typeof globalThis!=='undefined'?globalThis:null),function(){
 'use strict';
@@ -26,11 +26,19 @@ function resolve(source,accountHint,typedDecision){
  const text=String(source||'');
  const known=findHistory(text,accountHint);
  const values=known?HISTORY_COUNTS[known.id]:null;
- const explicit=text.match(/(?:^|\n)\s*Solutions\s*:\s*(MS|SI)\b/im);
- if(explicit)return {type:explicit[1].toUpperCase(),reason:'Current ticket Solutions',customer:known?.customer||'',confidence:'explicit'};
- if(typedDecision&&typedDecision.profileType==='mixed-row-match'&&typedDecision.classification){
-   return {type:typedDecision.classification,reason:'Matching product or project',customer:known?.customer||'',confidence:'project'};
+ // Database row outranks existing ticket Solutions and the prefix on its Subject.
+ // A mixed-service account requires a product/project match: no newest-row guess.
+ if(typedDecision && (typedDecision.profileType==='single'||typedDecision.profileType==='mixed-row-match')
+    && /^(?:MS|SI)$/.test(typedDecision.classification||'')) {
+   return {type:typedDecision.classification,
+     reason:typedDecision.profileType==='single'?'Single-service customer in SI/MS database':'Matching project in SI/MS database',
+     customer:typedDecision.customer||known?.customer||'',confidence:'database'};
  }
+ const explicit=text.match(/(?:^|\n)\s*Solutions\s*:\s*(MS|SI)\b/im);
+ if(typedDecision?.profileType==='mixed-fallback') {
+   return {type:'',reason:'Multiple service types in database; select the matching project',customer:typedDecision.customer||known?.customer||'',confidence:'mixed'};
+ }
+ if(explicit)return {type:explicit[1].toUpperCase(),reason:'Current ticket Solutions (database unavailable)',customer:known?.customer||'',confidence:'explicit'};
  if(values){
   const a=values.MS||0,b=values.SI||0;
   // Strong 2026 precedent: three or more consistently classified tickets.

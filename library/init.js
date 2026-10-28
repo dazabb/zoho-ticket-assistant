@@ -243,11 +243,12 @@ Viber Details/Zoho Comment on Ticket for initial troubleshooting:
 - Do not replace the named subsections with flat top-level bullets for normal ticket generation.
 
 Solutions rules:
-- Use Solutions: SI for implementation, migration, deployment, project activity, maintenance activity, and scheduled technical work.
-- Use Solutions: MS for managed support, monitoring, backup operations, storage incidents, and other operational support tickets.
+- Determine Solutions (SI/MS) from the matching account and product/project row in the embedded SI/MS Customer Database, NOT from whether the ticket is an Incident or Request.
+- A single-type database account keeps that service type even when the existing Zoho subject uses an incorrect MSDCO/SI prefix.
+- A mixed-type database account requires a relevant project/product row; leave service unconfirmed if there is no match.
 - Resolve the account/customer first, then consult the embedded SI/MS database before finalizing Solutions.
 - If the matched account has only one typed profile in the embedded SI/MS database, use that type as the default classification.
-- If the matched account has both MS and SI rows, match Account + Product/Project first; if no clear row matches, use the newest typed row for that account as the fallback classification.
+- If the matched account has both MS and SI rows, match Account + Product/Project first; if no clear row matches, ask for the supported project, never default to the newest row.
 - Keep Solutions, subject prefix, and SE row preference aligned to the same resolved account classification.
 
 Bridge call / screenshot triage mode:
@@ -309,8 +310,7 @@ SE and PM/SD matching rules:
 - Resolve PM/SD of this account only from the Enrolled Accounts Database.
 - Match Account + Product/Project first before Account-only matching.
 - For generic, informational, or documentation requests with no clear product/project clue, fall back to the most consistent Primary SE / Secondary SE pair for the matched account.
-- Prefer MS rows for managed support, monitoring, backup operations, storage incidents, and other operational support tickets.
-- Prefer SI rows for implementation, migration, deployment, and one-time project delivery work.
+- Prefer the database row(s) for the matched account and current project/product; do not use incident/request keywords to substitute a different service line.
 - Use newest year only as a tie-breaker after Account + Product/Project + SI/MS relevance.
 - Use account-level fallback before outputting N/A when the embedded SI/MS data contains a consistent SE pair for the matched account.
 - Do not output SE's that can handle this ticket: N/A when a valid matching SI/MS row exists in the embedded database.
@@ -394,7 +394,7 @@ Scheduled maintenance mapping rules:
   - for that IaaS health-check pattern, output Issue Subcategory: Check IAAS Health and Metrics
   - for that IaaS health-check pattern, output Supported Portfolio: (IaaS) Infrastructure as a Service
   - for that IaaS health-check pattern, output Solutions: MS
-  - for that IaaS health-check pattern, keep the MS subject prefix and use the dated activity subject format when date/time is present
+  - for that IaaS health-check pattern, use the matched database service type and the dated activity subject format when date/time is present
 
 Issue Category and Issue Subcategory validity rules:
 - Do not invent Issue Category or Issue Subcategory values that are not valid Zoho options.
@@ -644,6 +644,8 @@ GMA (ICT) | Aruba Airwave MA | 2025 | SI |  | CJ Tecson | EJ Remolona
 Smart | RAFM DR MA (Dec 2024-Dec 2025) - Dec-Jan 2025 | 2025 | SI | Dell | Danilo Damiles | JP Doblado
 Smart | DMS MA Renewal Nov 2026-Oct 2027 | 2027 | SI |  | Danilo Damiles | JP Doblado
 RTVM | Unity MA (April to Dec 2025) 1st month (May) | 2025 | SI |  | Danilo Damiles | JP Doblado
+MONDE NISSIN | Zerto- 44 Veeam's (12 mos) | 2025 | MS | Zerto | Lery Ponce | Carlos Ochoa
+PASCUAL LAB | Backup as a Service | 2026 | MS | Zadara | Lery Ponce | 
 AMDOCS-SMART | VMAX 950 Prod MA (Jan 2026-Dec 2026) | 2026 | SI |  | Danilo Damiles | JP Doblado
 AMDOCS-SMART | VMAX 250 MA (Jan 2026-Dec 2026) | 2026 | SI |  | Danilo Damiles | JP Doblado
 BPI ECM | BPI ECM Refresh (Data Trust) |  | MS | Datatrust | Kit Jolly | Jed Trinidad
@@ -2586,7 +2588,9 @@ Severity answer structure:
     const resolved = resolveAccountFromText(text);
     if (!resolved) return null;
 
-    const profile = buildAccountProfiles().get(normalizeText(resolved.account));
+    const profiles = buildAccountProfiles();
+    const profile = profiles.get(normalizeText(resolved.account))
+      || profiles.get(normalizeText(resolved.customer));
     if (!profile) return null;
 
     const typedRows = profile.rows.filter(function (row) { return row.solution === "MS" || row.solution === "SI"; });
@@ -2632,6 +2636,10 @@ Severity answer structure:
     };
   }
 
+  // Use the same embedded SI/MS project database for the final ticket check
+  // as the prompt generator. This is never derived from the old Zoho subject.
+  window.MAUProjectDatabase = Object.freeze({ decide: getAccountClassificationDecision });
+
   function formatRowSummary(row) {
     if (!row) return "No typed row summary available.";
     const detail = [row.project, row.year, row.solution, row.product].filter(Boolean).join(" | ");
@@ -2643,7 +2651,7 @@ Severity answer structure:
     const service = window.MAUServiceLine?.resolve(text, null, decision);
     if (service?.type) {
       const customerLabel=service.customer || decision?.customer || '';
-      return `Verified service-line rule for this current ticket:\n- Use Solutions: ${service.type}.\n- Use subject prefix ${window.MAUServiceLine.PREFIX[service.type]}.\n- Customer: ${customerLabel}.\n- Evidence: ${service.reason}.\n- Do not substitute SI from a generic migration/maintenance keyword or from the newest account record.\n- If the source explicitly states another service or project, flag the conflict for review.`;
+      return `Verified service-line rule for this current ticket:\n- Use Solutions: ${service.type}.\n- Use subject prefix ${window.MAUServiceLine.PREFIX[service.type]}.\n- Customer: ${customerLabel}.\n- Evidence: ${service.reason}.\n- Do not substitute SI from a generic migration/maintenance keyword or from the newest account record.\n- The matched SI/MS customer-project database determines service type even if an existing Zoho subject has a conflicting prefix. Flag the old prefix as inconsistent, but use the database type.`;
     }
     if (!decision) return "";
     if (!decision.classification) return "Service line MS or SI is not confirmed for this mixed-service account. Ask for the supported project/service before assigning a subject prefix or Solutions.";
