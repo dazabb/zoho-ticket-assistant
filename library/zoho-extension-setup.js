@@ -6,6 +6,7 @@
   const status = $("zohoExtensionStatus");
   const installButton = $("openZohoExtensionInstallBtn");
   let lastCheck = false;
+  let lastVersion = "";
 
   function setStatus(text, state) {
     status.textContent = text;
@@ -34,12 +35,13 @@
         const data = e.data;
         if (e.source !== window || (location.protocol === "file:" ? e.origin !== "null" : e.origin !== location.origin) || !data || data.type !== "zta:bridge-response" || data.requestId !== requestId) return;
         const version = String(data.response?.version || "");
+        lastVersion=version;
         const parsed = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(version);
-        const compatible = parsed && (Number(parsed[1]) > 1 || (Number(parsed[1]) === 1 && Number(parsed[2]) >= 3));
+        const compatible = parsed && (Number(parsed[1]) > 1 || (Number(parsed[1]) === 1 && Number(parsed[2]) >= 5));
         if (data.ok && !compatible) {
           finish(false, version
-            ? `Extension v${version} is out of date. Install v1.3, then click Refresh.`
-            : "Please install extension v1.3, then click Refresh.");
+            ? `Extension v${version} is out of date. Install v1.5, then click Refresh.`
+            : "Please install extension v1.5, then click Refresh.");
         } else finish(!!data.ok, data.ok ? `Zoho is ready. You can use Create Ticket.` : undefined);
       }
       const timer = window.setTimeout(() => finish(false), timeoutMs);
@@ -73,6 +75,6 @@
     catch (e) { prompt("Copy and paste this address into Chrome:", text); }
   });
 
-  window.MAUZohoExtensionGuide = { open, close, check: checkConnection, get connected() { return lastCheck; } };
+  window.MAUZohoExtensionGuide = { open, close, check: checkConnection, get connected() { return lastCheck; }, get version() {return lastVersion;} };
   window.setTimeout(() => { if (!document.hidden) checkConnection(); }, 1100);
 }());

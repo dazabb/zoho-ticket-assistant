@@ -3,7 +3,7 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "MAU-2.7-edit-ticket";
+  const SCRIPT_REVISION = "MAU-3.2-managed-ticket";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
   const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
@@ -11,6 +11,7 @@
   const BRIDGE_RESPONSE_TYPE = "zta:bridge-response";
   const SKIP_AUTOFILL_LABELS = new Set([
     "Department",
+    "Layout",
     "Account Name",
     "Contact Name",
     "Email",
@@ -30,7 +31,9 @@
     "Channel",
     "Ticket Source",
     "Ticket Category",
-    "Technology/Platform"
+    "Technology/Platform",
+    "Assigned Engineer",
+    "Layout"
   ]);
   const STRICT_DROPDOWN_LABELS = new Set([
     "Priority",
@@ -40,7 +43,9 @@
     "Channel",
     "Ticket Source",
     "Ticket Category",
-    "Technology/Platform"
+    "Technology/Platform",
+    "Assigned Engineer",
+    "Layout"
   ]);
   const PROTECTED_FIELD_LABELS = new Set([
     "Serial Number"
@@ -296,6 +301,15 @@
         'input[aria-labelledby="SE\'s that can handle this ticket"]'
       ]
     },
+    "Customer Location Address": {
+      kind: "text", selectors: ['input[data-id="cf_customer_location_address"]','input[data-test-id="cf_customer_location_address"]','input[data-id="cf_customer_location_address_textBox"]','input[aria-label="Customer Location Address"]']
+    },
+    "Assigned Engineer": {
+      kind: "dropdown", selectors: ['input[data-id="cf_assigned_engineer_textBox"]','input[data-test-id="cf_assigned_engineer_textBox"]','[data-id="cf_assigned_engineer"] input','[data-test-id="cf_assigned_engineer"] input','input[aria-label="Assigned Engineer"]','[role="combobox"][aria-label="Assigned Engineer"]']
+    },
+    "Layout": {
+      kind: "dropdown", selectors: ['input[data-id="layout_textBox"]','input[data-test-id="layout_textBox"]','[data-id="layout"] input','[data-test-id="layout"] input','[role="combobox"][aria-label="Layout"]']
+    },
     "PM/SD of this account": {
       kind: "text",
       selectors: [
@@ -319,6 +333,7 @@
     "Email",
     "Phone",
     "Mobile Number",
+    "Customer Location Address",
     "Subject",
     "Description",
     "Issue Description",
@@ -343,11 +358,12 @@
     "Support Agent",
     "Priority",
     "Channel",
-    "Ticket Source"
+    "Ticket Source", "Layout", "Assigned Engineer"
   ]);
 
   const FILL_ORDER = [
     "Department",
+    "Layout",
     "Account Name",
     "Contact Name",
     "Email",
@@ -371,6 +387,10 @@
     "Priority",
     "Channel",
     "Ticket Source",
+    "Layout",
+    "Assigned Engineer",
+    "Customer Location Address",
+    "Serial Number",
     "SE's that can handle this ticket",
     "PM/SD of this account",
     "Viber Details/Zoho Comment on Ticket for initial troubleshooting"
@@ -468,6 +488,8 @@
   }
 
   function getPostFillDelay(label, kind) {
+    // Changing the Zoho layout can rebuild the entire custom-field form.
+    if (label === "Layout") return 1250;
     return FIELD_POST_FILL_DELAY_MS[getFieldSpeedClass(label, kind)] || 0;
   }
 
@@ -753,7 +775,7 @@
   }
 
   function currentTicketMode() {
-    return /^\/agent\/amtiphilippines\/sandz\/tickets\/edit\/\d+\/?$/i.test(location.pathname)
+    return /^\/agent\/amtiphilippines\/[a-z0-9_-]+\/tickets\/edit\/\d+\/?$/i.test(location.pathname)
       ? "edit" : "new";
   }
 
@@ -1594,19 +1616,17 @@
   function getFieldValue(payload, label) {
     if (!payload || !payload.fields) return "";
     if (label === DESCRIPTION_RETRY_LABEL) {
-      return String(
-        payload.fields[DESCRIPTION_FALLBACK_LABEL]
-        || payload.fields[DESCRIPTION_RETRY_LABEL]
-        || ""
-      ).trim();
+      return String(payload.source === "Managed Services Ticket Workspace"
+        ? (payload.fields[DESCRIPTION_RETRY_LABEL] || payload.fields[DESCRIPTION_FALLBACK_LABEL] || "")
+        : (payload.fields[DESCRIPTION_FALLBACK_LABEL] || payload.fields[DESCRIPTION_RETRY_LABEL] || "")).trim();
     }
     if (label === "Support Level") {
       const value = String(payload.fields[label] || "").trim();
-      return value || "Level 1.5";
+      return value || (payload.source === "Managed Services Ticket Workspace" ? "" : "Level 1.5");
     }
     if (label === "Support Agent") {
       const value = normalizeHumanName(payload.fields[label] || "");
-      return value || detectZohoLoggedInSupportAgent();
+      return value || (payload.source === "Managed Services Ticket Workspace" ? "" : detectZohoLoggedInSupportAgent());
     }
     return String(payload.fields[label] || "").trim();
   }
@@ -1804,7 +1824,8 @@
     if (!payload || !payload.fields || autofillRunning) return;
     const unsupportedSubcategory = guardBackupSubcategory(payload);
     // Extension is a second independent validation gate; works even with stale MAU tabs.
-    const outcome=window.MAUZohoMap?.correctPayload(payload,payload.rawWorkspace||'');
+    const isManaged=payload.source === "Managed Services Ticket Workspace";
+    const outcome=isManaged ? null : window.MAUZohoMap?.correctPayload(payload,payload.rawWorkspace||'');
     const mappingWarnings=outcome?.zohoDropdownWarnings || [];
     autofillRunning = true;
 
@@ -1849,11 +1870,11 @@
           setPanelStatus("Ticket changed; autofill stopped.","error");
           return;
         }
-        if (editing && (["Status", "Support Agent", "Support Level", "Channel", "Ticket Source"].includes(label) ||
+        if (editing && (["Status", "Support Agent", "Support Level", "Channel", "Ticket Source", "Assigned Engineer", "Layout"].includes(label) ||
             (!payload.__mauEdit.replaceIdentity && ["Customer Company Name", "Subject", "Description", "Issue Description"].includes(label)))) {
           continue;
         }
-        if (SKIP_AUTOFILL_LABELS.has(label)) {
+        if (SKIP_AUTOFILL_LABELS.has(label) && !(isManaged && ["Account Name", "Contact Name", "Mobile Number"].includes(label))) {
           continue;
         }
 
@@ -1893,7 +1914,7 @@
 
       if (editing) {
         panel("Existing Serial Number and ownership fields were preserved.", "info");
-      } else if (supportAgentStageReached) {
+      } else if (supportAgentStageReached && !isManaged) {
         const serialCleanup = await clearProtectedField("Serial Number");
         if (serialCleanup.ok && serialCleanup.cleared) {
           panel("Cleared protected field: Serial Number", "info");
@@ -1902,7 +1923,7 @@
         } else {
           panel(`Protected field cleanup skipped: Serial Number (${serialCleanup.reason})`, "error");
         }
-      } else {
+      } else if (!isManaged) {
         panel("Protected field cleanup skipped: Support Agent stage did not run.", "error");
       }
 

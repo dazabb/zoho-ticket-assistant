@@ -504,3 +504,10 @@ body.theme-dark #csaPane,body.theme-dark #csaFrame{background:#1b1d22}
 .zoho-extension-help{margin-top:12px}
 body.theme-dark .zoho-extension-intro{color:#b4becc}
 @media(max-width:600px){.zoho-extension-dialog{padding:20px}}
+
+/* Managed Services ticket workspace — separate from the SANDZ ticket assistant. */
+#managedTicketPane{display:flex;flex:1 1 auto;min-height:0;min-width:0;padding:0 16px 16px;background:var(--mau-bg)}
+#managedTicketFrame{width:100%;height:100%;min-height:0;display:block;border:1px solid var(--mau-border);border-radius:16px;background:var(--mau-surface);box-shadow:var(--mau-shadow)}
+#managedTicketPane[hidden]{display:none!important}
+body.theme-dark #managedTicketPane,body.theme-dark #managedTicketFrame{background:#1b1d22}
+@media(max-width:850px){#managedTicketPane{padding:0 10px 12px}}

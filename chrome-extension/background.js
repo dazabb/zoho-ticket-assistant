@@ -4,7 +4,7 @@
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
   const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
-  const EDIT_PATH_RE = /^\/agent\/amtiphilippines\/sandz\/tickets\/edit\/(\d+)\/?$/i;
+  const EDIT_PATH_RE = /^\/agent\/amtiphilippines\/[a-z0-9_-]+\/tickets\/edit\/(\d+)\/?$/i;
   const STORAGE_KEY_TAB_ID = "ztaZohoTabId";
   const DEFAULT_ZOHO_NEW_TICKET_URL = "https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new";
 
@@ -109,7 +109,7 @@
   }
 
   async function listOpenEditTabs() {
-    const candidates = await chrome.tabs.query({ url: "https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/edit/*" });
+    const candidates = await chrome.tabs.query({ url: "https://helpcenter.amti.com.ph/agent/amtiphilippines/*/tickets/edit/*" });
     return candidates.filter(tab => tab && tab.id && !tab.discarded && parseEditUrl(tab.url))
       .map(tab => ({ tabId: tab.id, ticketId: parseEditUrl(tab.url).ticketId,
         title: String(tab.title || "Zoho Edit Ticket").slice(0, 150),

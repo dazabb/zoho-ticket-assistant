@@ -1212,6 +1212,38 @@
     }
   }
 
+  // Managed Shared Service has a different Zoho layout and classification system.
+  // Do not run the SANDZ classification correction chain on these explicitly reviewed fields.
+  async function openManagedServicesPayload(payload, newTicketUrl) {
+    if (!payload || payload.source !== "Managed Services Ticket Workspace" || !payload.fields ||
+        !String(payload.fields.Subject || "").trim()) {
+      throw new Error("Prepare and review the Managed Services ticket first.");
+    }
+    const targetUrl=String(newTicketUrl||"").trim();
+    const validNewUrl=/^https:\/\/helpcenter\.amti\.com\.ph\/agent\/amtiphilippines\/([a-z0-9_-]+)\/tickets\/new\/?$/i.test(targetUrl);
+    const guide=window.MAUZohoExtensionGuide;
+    if (!guide || !(await guide.check())) {guide?.open();throw new Error("Connect the MAU Zoho extension, then try again.");}
+    const version=String(guide.version||'');
+    if (!/^([2-9]\.|1\.(?:[5-9]|[1-9][0-9])\.)/.test(version)) {
+      guide.open();throw new Error("Update the MAU Zoho extension to v1.5 for Managed Services autofill.");
+    }
+    const listing=await sendExtensionBridgeRequest(ACTION_LIST_EDIT,{});
+    if (!listing || listing.ok === false) throw new Error("Could not inspect open Zoho tabs.");
+    const department=validNewUrl ? targetUrl.match(/\/agent\/amtiphilippines\/([^/]+)\/tickets\/new/i)[1] : "";
+    const editTabs=(listing.tabs||[]).filter(tab =>
+      !department || String(tab.url||"").includes(`/amtiphilippines/${department}/tickets/edit/`));
+    const destination=await chooseTicketDestination(editTabs,payload);
+    if (!destination) return {cancelled:true};
+    if (destination.mode === "new" && !validNewUrl) {
+      throw new Error("Enter the correct Zoho New Ticket page address.");
+    }
+    const response=await sendExtensionBridgeRequest(ACTION_PREPARE_OR_FOCUS,{
+      payload,targetUrl:validNewUrl?targetUrl:undefined,...destination
+    });
+    if (!response || response.ok===false) throw new Error(response?.error||"Zoho extension did not accept the ticket.");
+    return {mode:destination.mode,editTicketId:destination.editTicketId||null};
+  }
+
   function installButton() {
     const btn = $("createZohoTicketBtn");
     if (!btn) return;
@@ -1224,6 +1256,7 @@
     parseWorkspace,
     buildZohoPayload,
     openZohoTicket,
+    openManagedServicesPayload,
     setZohoNewTicketUrl(url) {
       localStorage.setItem(STORAGE_KEY_URL, url || DEFAULT_ZOHO_NEW_TICKET_URL);
     }
