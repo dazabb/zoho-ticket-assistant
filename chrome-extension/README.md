@@ -4,7 +4,7 @@
 
 If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or disable it first to avoid duplicate autofill actions.
 
-1. Extract `MAU-Zoho-Extension-v1.5.zip` to a folder (MAU-Zoho-Extension).
+1. Extract `MAU-Zoho-Extension-v1.6.zip` to a folder (MAU-Zoho-Extension).
 2. Open **chrome://extensions/** in the Chrome address bar.
 3. Turn on **Developer mode** (upper-right corner).
 4. Click **Load unpacked** and select the extracted **MAU-Zoho-Extension** folder.
@@ -28,7 +28,7 @@ If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or
 - On Chrome's extension details page, grant appropriate site access if Chrome requests it. Never use arbitrary extension installers or paste credentials into the extension.
 - Some Zoho fields might require manual selection if Zoho changed its form.
 
-### Existing ticket editing (v1.5)
+### Existing ticket editing (v1.6)
 
 - Keep a Zoho tab open at `https://helpcenter.amti.com.ph/agent/amtiphilippines/<department>/tickets/edit/<numeric-id>`.
 - In MAU, click **Create Ticket**. If edit tabs are present, select a specific ID or choose **Create a new Zoho ticket**. New is the default.
@@ -37,7 +37,7 @@ If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or
 - On Zoho Edit Ticket forms, open the ticket property fields before autofilling. The extension won't fill if they're not available, and it never clicks Save.
 - If the edit tab changes between selection and filling, MAU cancels rather than sending data to a different ticket.
 
-### Managed Services Tickets (v1.5)
+### Managed Services Tickets (v1.6)
 
 - Open **Managed Services Tickets** in MAU, paste the customer's request, and select **Generate ticket**.
 - The Managed Shared Service layout is separate from the SANDZ ticket-mapping rules.

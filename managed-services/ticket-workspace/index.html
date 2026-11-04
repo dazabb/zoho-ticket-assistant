@@ -11,7 +11,7 @@
 <main class="page">
   <header class="page-heading">
     <div><span class="eyebrow">MANAGED SHARED SERVICE</span><h1>Managed Services Tickets</h1><p>Paste the customer request, prepare the ticket, then review it in Zoho.</p></div>
-    <button type="button" id="newTicket" class="outline">＋ New ticket</button>
+    <div class="heading-actions"><a class="outline" href="https://helpcenter.amti.com.ph/agent/amtiphilippines/managed-shared-service/tickets/list/all-cases" target="_blank" rel="noopener noreferrer">Open Zoho tickets</a><button type="button" id="newTicket" class="outline">＋ New ticket</button></div>
   </header>
   <div class="workspace-grid">
     <section class="entry-card" aria-labelledby="source-heading">
@@ -45,7 +45,7 @@
         <div id="zohoView" hidden>
           <div class="field-title"><h3>Ticket details</h3><span class="quiet">You can correct any field before autofill.</span></div>
           <div class="fields" id="ticketFields"></div>
-          <details class="advanced"><summary>Zoho settings</summary><label for="newZohoUrl">New Ticket page address</label><input id="newZohoUrl" type="url" placeholder="https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new"><p class="quiet">Use the page for the department you normally open. Open Edit Ticket tabs are offered for selection.</p></details>
+          <details class="advanced"><summary>Zoho settings</summary><label for="newZohoUrl">New Ticket page address</label><input id="newZohoUrl" type="url" value="https://helpcenter.amti.com.ph/agent/amtiphilippines/managed-shared-service/tickets/new" readonly><p class="quiet">Uses the Managed Services department. An open Managed Services Edit Ticket tab is used first.</p></details>
           <div class="action-row"><button id="copyFields" type="button" class="outline">Copy ticket fields</button><span class="quiet">Zoho does not save automatically.</span></div>
         </div>
         <div id="emailView" hidden>

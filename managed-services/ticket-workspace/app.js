@@ -11,15 +11,20 @@
     ['severityLevel','Severity Level','severity'],['priority','Priority','priority'],
     ['supportLevel','Support Level'],['supportAgent','Support Agent'],
     ['assignedEngineer','Assigned Engineer'],['contactName','Contact Name'],
-    ['mobileNumber','Mobile Number'],['channel','Channel','channel'],
+    ['phoneNumber','Phone'],['mobileNumber','Mobile Number'],['channel','Channel','channel'],
     ['engineerTasks','Engineer Task / Activity','tasks'],['description','Description','textarea']
   ];
-  const state={profileId:'guest',draft:null,mode:'zoho',images:[],messages:{zoho:[],email:[],notes:[]},busy:false,
+  const state={profileId:'guest',profileAgent:'',draft:null,mode:'zoho',images:[],messages:{zoho:[],email:[],notes:[]},busy:false,
     emailWasEdited:false,notesWasEdited:false,sessions:[],activeSessionId:''};
   const SESSIONS_PREFIX='mauManagedTicketsV01::';
   const ZOHO_URL_KEY='mauManagedNewZohoUrlV1';
-  const DEFAULT_URL='https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new';
-  const profiles={'mauris-mananzan':'Mauris Mananzan','jacob-labor':'Jacob Labor','arthur-mejia':'Arthur Mejia'};
+  const DEFAULT_URL='https://helpcenter.amti.com.ph/agent/amtiphilippines/managed-shared-service/tickets/new';
+  const profiles={
+    'mauris-mananzan':'Mauris Mananzan','jacob-labor':'Jacob Labor',
+    'arthur-mejia':'Arthur Mejia','carl-angelo-cequena':'Carl Angelo Cequena',
+    'john-axel-acal':'John Axel Acal','john-vincent-anis':'John Vincent Anis',
+    'ramuel-panganiban':'Ramuel Panganiban','romnick-catap':'Romnick Catap'
+  };
   let requestCounter=0;
   const pending=new Map();
   function text(v){return String(v==null?'':v).trim();}
@@ -49,7 +54,7 @@
       const btn=document.createElement('button');btn.type='button';btn.textContent=item.title;
       btn.setAttribute('title',item.title);btn.addEventListener('click',()=>{
         state.activeSessionId=item.id;
-        const data=item.data||{};state.draft=M.sanitize(data.draft||{});
+        const data=item.data||{};state.draft=M.sanitize(data.draft||{});lockProfileAgent();
         state.messages={zoho:[],email:[],notes:[]};
         for(const m of ['zoho','email','notes'])state.messages[m]=Array.isArray(data.messages?.[m])?data.messages[m].slice(-12):[];
         state.emailWasEdited=!!data.emailWasEdited;state.notesWasEdited=!!data.notesWasEdited;
@@ -61,18 +66,27 @@
     }
     area.append(list);
   }
-  function loadProfile(id){
+  function lockProfileAgent(){
+    if(!state.draft)return;
+    if(state.profileAgent)state.draft.supportAgent=state.profileAgent;
+    state.draft.phoneNumber=text(state.draft.phoneNumber)||'0';
+    state.draft.mobileNumber=text(state.draft.mobileNumber)||'0';
+  }
+  function loadProfile(id,agent){
     const desired=text(id)||'guest';
-    if(desired===state.profileId && state.draft)return;
+    const currentAgent=desired==='guest'?'':(text(agent)||profiles[desired]||'');
+    if(desired===state.profileId && state.draft){
+      state.profileAgent=currentAgent;lockProfileAgent();render();return;
+    }
     clearScreens();
-    state.profileId=desired;
+    state.profileId=desired;state.profileAgent=currentAgent;
     state.draft=null;state.images=[];state.messages={zoho:[],email:[],notes:[]};state.emailWasEdited=false;state.notesWasEdited=false;state.activeSessionId='';state.sessions=[];
     $('source').value='';$('emailText').value='';$('notesText').value='';$('emailTicketNumber').value='';
     try {
       state.sessions=JSON.parse(safeStorage(sessionHistoryKey())||'[]');if(!Array.isArray(state.sessions))state.sessions=[];
       const parsed=JSON.parse(safeStorage(sessionKey())||'null');
       if(parsed?.draft && typeof parsed.draft==='object'){
-        state.draft=M.sanitize(parsed.draft);
+        state.draft=M.sanitize(parsed.draft);lockProfileAgent();
         state.activeSessionId=state.sessions[0]?.id||'';
         $('source').value=text(parsed.source);
         if(parsed.messages && typeof parsed.messages==='object') {
@@ -117,6 +131,7 @@
         for(const value of options){const opt=document.createElement('option');opt.value=value;opt.textContent=value||'Select';control.append(opt);}
       } else {control=document.createElement('input');control.type='text';}
       control.id='field-'+key;
+      if(key==='supportAgent' && state.profileAgent){control.readOnly=true;control.title='Uses your selected MAU profile';}
       control.value=key==='engineerTasks'?state.draft.engineerTasks.join('\n'):text(state.draft[key]);
       control.addEventListener('input',()=>onFieldChange(key,control.value));
       control.addEventListener('change',()=>onFieldChange(key,control.value));
@@ -129,6 +144,7 @@
   }
   function onFieldChange(key,value){
     if(!state.draft)return;
+    if(key==='supportAgent' && state.profileAgent){state.draft.supportAgent=state.profileAgent;return;}
     if(key==='engineerTasks')state.draft[key]=value.split('\n').map(x=>x.replace(/^\s*[-*•\d.)]+\s*/,'').trim()).filter(Boolean);
     else state.draft[key]=value;
     if(key==='serialNumber'){
@@ -205,7 +221,7 @@
     const raw=text($('source').value);
     if(!raw&&!state.images.length){show('Paste a ticket or add a screenshot first.','error');return;}
     clearMessages();
-    state.draft=M.extract(raw,{id:state.profileId,name:profiles[state.profileId]||''});
+    state.draft=M.extract(raw,{id:state.profileId,name:state.profileAgent});lockProfileAgent();
     state.emailWasEdited=false;state.notesWasEdited=false;
     state.mode='zoho';render();
     save();
@@ -261,7 +277,7 @@
         if(!existing.engineerTasks.length&&Array.isArray(values.engineerTasks)){
           existing.engineerTasks=values.engineerTasks.filter(x=>typeof x==='string'&&!/^(?:screwdriver|usb flash|rj45|thermal paste|tools to bring)/i.test(x)).slice(0,12);
         }
-        existing.subject=M.makeSubject(existing,existing.subject);
+        existing.subject=M.makeSubject(existing,existing.subject);lockProfileAgent();
         state.messages.zoho.push({role:'assistant',text:'Reviewed the request and screenshots. The ticket fields are ready to check.'});
         show('Ticket ready. Review the details before autofill.','success');
       }
@@ -306,6 +322,7 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
   }
   async function createZoho(){
     if(state.busy||!state.draft)return;
+    lockProfileAgent();
     const d=M.sanitize(state.draft);
     if(!d.company){show('Enter the Customer Company Name before opening Zoho.','error');setMode('zoho');$('field-company')?.focus();return;}
     if(!d.subject||!d.issueDescription){show('Add a subject and issue description before opening Zoho.','error');setMode('zoho');return;}
@@ -313,14 +330,14 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
       show('Please enter the device serial number for this hardware ticket.','error');setMode('zoho');$('field-serialNumber')?.focus();return;
     }
     const url=text($('newZohoUrl').value)||DEFAULT_URL;
-    if(!/^https:\/\/helpcenter\.amti\.com\.ph\/agent\/amtiphilippines\/[a-z0-9_-]+\/tickets\/new\/?$/i.test(url)){
+    if(url!==DEFAULT_URL){
       show('Check the New Ticket page address under Zoho settings.','error');return;
     }
     safeStorage(ZOHO_URL_KEY,url);
     state.busy=true;$('createTicket').disabled=true;show('Opening Zoho…');
     try{
-      const result=await dispatch('autofill',{payload:M.payload(d),newTicketUrl:url});
-      show(result?.cancelled?'Cancelled.':'Zoho opened. Please review and save the ticket yourself.','success');
+      const result=await dispatch('autofill',{payload:M.payload(d,{supportAgent:state.profileAgent}),newTicketUrl:url});
+      show(result?.mode==='edit'?'Existing Managed Services ticket opened. Review changes before saving.':'New Managed Services ticket opened. Review before submitting.','success');
     }catch(e){show(e?.message||'Zoho autofill did not start.','error');}
     finally{state.busy=false;$('createTicket').disabled=false;}
   }
@@ -334,7 +351,7 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
     if(event.source!==parent)return;
     const msg=event.data||{};
     if(msg.type==='MAU_APPEARANCE'){document.body.classList.toggle('dark',!!msg.dark);return;}
-    if(msg.type==='MAU_PROFILE'){loadProfile(msg.profileId);return;}
+    if(msg.type==='MAU_PROFILE'){loadProfile(msg.profileId,msg.supportAgent);return;}
     if(msg.type!=='MAU_MANAGED_RESULT')return;
     const work=pending.get(msg.requestId);if(!work)return;
     pending.delete(msg.requestId);clearTimeout(work.timeout);
@@ -363,7 +380,7 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
     save();
   });
   $('copyFields').addEventListener('click',()=>{
-    if(!state.draft)return;const fields=M.payload(state.draft).fields;
+    if(!state.draft)return;lockProfileAgent();const fields=M.payload(state.draft,{supportAgent:state.profileAgent}).fields;
     copy(Object.entries(fields).map(([k,v])=>k+': '+v).join('\n'));
   });
   $('copyEmail').addEventListener('click',()=>{
@@ -375,7 +392,9 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
   $('copyNotes').addEventListener('click',()=>{if(state.draft)copy($('notesText').value);});
   $('sendFollow').addEventListener('click',followup);
   $('followQuestion').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();followup();}});
-  $('newZohoUrl').value=safeStorage(ZOHO_URL_KEY)||DEFAULT_URL;
+  $('newZohoUrl').value=DEFAULT_URL;
+  $('newZohoUrl').readOnly=true;
+  safeStorage(ZOHO_URL_KEY,DEFAULT_URL);
   try{loadProfile(parent.MAUActiveProfileId||'guest');}catch(_){loadProfile('guest');}
   parent.postMessage({type:'MAU_MANAGED_READY'},'*');
 })();

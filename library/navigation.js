@@ -115,6 +115,13 @@
     if(typeof window.toggleTheme==='function') window.toggleTheme();
   });
 
+  function sendManagedProfile(){
+    const frame=document.getElementById('managedTicketFrame');
+    if(frame?.contentWindow)frame.contentWindow.postMessage({
+      type:'MAU_PROFILE', profileId:window.MAUActiveProfileId||'guest',
+      supportAgent:typeof window.getActiveSupportAgent==='function' ? window.getActiveSupportAgent() : ''
+    },'*');
+  }
   function sendMondeProfile(){
     const frame=document.getElementById('mondeFrame');
     if(frame?.contentWindow)frame.contentWindow.postMessage({type:'MAU_PROFILE',profileId:window.MAUActiveProfileId||'guest'},'*');
@@ -124,11 +131,11 @@
     if(frame)frame.addEventListener('load',()=>{
       window.syncThemePreferenceButton();
       if(id==='mondeFrame')sendMondeProfile();
-      if(id==='managedTicketFrame') frame.contentWindow.postMessage({type:'MAU_PROFILE',profileId:window.MAUActiveProfileId||'guest'},'*');
+      if(id==='managedTicketFrame') sendManagedProfile();
     });
   }
   window.addEventListener('mau:profilechange',sendMondeProfile);
-  window.addEventListener('mau:profilechange',()=>{const frame=document.getElementById('managedTicketFrame');if(frame?.contentWindow)frame.contentWindow.postMessage({type:'MAU_PROFILE',profileId:window.MAUActiveProfileId||'guest'},'*');});
+  window.addEventListener('mau:profilechange',sendManagedProfile);
   window.syncThemePreferenceButton();
 
   const aiButton=document.getElementById('openTeamAiBtn');
@@ -147,7 +154,7 @@
     if(location.protocol!=='file:' && event.origin!==location.origin) return;
     const message=event.data||{};
     if(message.type==='MAU_MANAGED_READY'){
-      frame.contentWindow.postMessage({type:'MAU_PROFILE',profileId:window.MAUActiveProfileId||'guest'},'*');
+      sendManagedProfile();
       window.syncThemePreferenceButton?.();
       return;
     }

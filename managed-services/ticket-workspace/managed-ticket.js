@@ -162,7 +162,7 @@
     const assigned=fromZohoField(raw,'Assigned Engineer');
     const inputAgent=fromZohoField(raw,'Support Agent');
     const name=profile.name||'';
-    const agent=inputAgent || ({'mauris-mananzan':'Mauris Mananzan','jacob-labor':'Jacob Labor','arthur-mejia':'Arthur Mejia'}[profile.id]||name);
+    const agent=name || inputAgent;
     const address=fromLabeledText(original,['Address','Site Address','Store Address','Installation Address','Work Location','Service Address']) ||
         fromZohoField(raw,'Customer Location Address') || fromLabeledText(raw,['Address','Site Address','Store Address']);
     const account=fromZohoField(raw,'Account Name') || (/(?:gabc|penshoppe|oxygen|regatta|memo)/i.test((formalCompany||'')+' '+site)?'Golden ABC, Incorporated':'');
@@ -175,7 +175,8 @@
       company, accountName:account,storeName:site,customerLocationAddress:address,
       contactName:fromLabeledText(original,['Primary Contact Person','Contact Person','Contact Name']) ||
         (raw.match(/Contact Info\s*\n\s*([^\n]+)/i)?.[1]||''),
-      mobileNumber:fromZohoField(raw,'Mobile Number')||fromLabeledText(original,['Contact Number','Primary Contact Number','Mobile Number']),
+      phoneNumber:fromZohoField(raw,'Phone') || fromLabeledText(original,['Phone Number','Telephone Number','Primary Contact Number','Contact Number']) || '0',
+      mobileNumber:fromZohoField(raw,'Mobile Number')||fromLabeledText(original,['Mobile Number','Cellphone Number','Secondary Contact Number'])||'0',
       subject:'',issueDescription:titleCaseHint,description:'',ticketCategory,issueCategory:category,issueSubCategory:subcat,
       severityLevel:fromZohoField(raw,'Severity Level') || (ticketCategory==='Incident'?'Sev3':'Sev4'),
       priority:fromZohoField(raw,'Priority') || 'Medium',
@@ -190,24 +191,26 @@
     };
     out.subject=makeSubject(out,subject);
     const activity=out.engineerTasks.length ? `\nRequested activities:\n${out.engineerTasks.map((x,i)=>`${i+1}. ${x}`).join('\n')}` : '';
-    out.description=`${out.issueDescription||'Service request'}${out.storeName?' — '+out.storeName:''}${activity}`.slice(0,2000);
+    out.description=''; // The Managed Services Description starts blank by request.
     return out;
   }
   function sanitize(draft) {
     const r={...draft};
     r.serialNumber=serialClean(r.serialNumber);
-    for(const key of ['company','accountName','storeName','customerLocationAddress','contactName','mobileNumber','issueDescription','description','ticketCategory','issueCategory','issueSubCategory','severityLevel','priority','supportLevel','supportAgent','assignedEngineer','channel','layout','subject']){
+    for(const key of ['company','accountName','storeName','customerLocationAddress','contactName','phoneNumber','mobileNumber','issueDescription','description','ticketCategory','issueCategory','issueSubCategory','severityLevel','priority','supportLevel','supportAgent','assignedEngineer','channel','layout','subject']){
       r[key]=clean(r[key]);
     }
+    r.phoneNumber=r.phoneNumber||'0';r.mobileNumber=r.mobileNumber||'0';
     r.engineerTasks=Array.isArray(r.engineerTasks)?unique(r.engineerTasks).slice(0,20):[];
     if(r.serialNumber&&!r.subject.toUpperCase().includes(r.serialNumber))r.subject=(r.subject?r.subject.replace(/\s*\([A-Z0-9-]{6,}\)\s*$/i,'').trim()+' ('+r.serialNumber+')':makeSubject(r,''));
     return r;
   }
-  function payload(draft) {
+  function payload(draft, profile={}) {
     const d=sanitize(draft);
+    if(profile.supportAgent)d.supportAgent=clean(profile.supportAgent);
     const fields={
       'Customer Company Name':d.company,'Account Name':d.accountName,'Contact Name':d.contactName,
-      'Mobile Number':d.mobileNumber,'Customer Location Address':d.customerLocationAddress,
+      'Phone':d.phoneNumber,'Mobile Number':d.mobileNumber,'Customer Location Address':d.customerLocationAddress,
       'Subject':d.subject,'Description':d.description,'Ticket Category':d.ticketCategory,
       'Issue Category':d.issueCategory,'Issue Sub-Category':d.issueSubCategory,
       'Issue Description':d.issueDescription,'Serial Number':d.serialNumber,
@@ -215,8 +218,12 @@
       'Support Agent':d.supportAgent,'Assigned Engineer':d.assignedEngineer,
       'Priority':d.priority,'Channel':d.channel,'Layout':'Managed Shared Service'
     };
-    Object.keys(fields).forEach(key=>{if(empty(fields[key]))delete fields[key];});
-    return {version:1,source:'Managed Services Ticket Workspace',createdAt:new Date().toISOString(),fields};
+    Object.keys(fields).forEach(key=>{
+      // Zero is the required default for missing Managed Services phone numbers.
+      if((key==='Phone'||key==='Mobile Number') && String(fields[key])==='0')return;
+      if(empty(fields[key]))delete fields[key];
+    });
+    return {version:1,source:'Managed Services Ticket Workspace',createdAt:new Date().toISOString(),ticketNumber:clean(d.ticketNumber),fields};
   }
   function email(d){
     const name=d.accountName&&/Golden ABC/i.test(d.accountName)?'GABC Service Desk':'Team';

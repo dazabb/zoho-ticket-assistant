@@ -990,7 +990,7 @@
         "Technology/Platform": fields.technologyPlatform || "",
         "Severity Level": severityLevel,
         "Support Level": normalizeSupportLevel(fields.supportLevel),
-        "Support Agent": firstNonEmpty(normalizeSupportAgent(fields.supportAgent), profileSupportAgent),
+        "Support Agent": firstNonEmpty(profileSupportAgent, normalizeSupportAgent(fields.supportAgent)),
         "Priority": priority,
         "Channel": fields.channel || "",
         "Ticket Source": fields.ticketSource || "",
@@ -1004,6 +1004,8 @@
     if (window.MAUBackupSubcategories) window.MAUBackupSubcategories.correctPayload(result, workspaceText);
     if (window.MAUZohoMap) window.MAUZohoMap.correctPayload(result, workspaceText);
     if (window.MAUTicketConsistency) window.MAUTicketConsistency.fixPayload(result, workspaceText);
+    // The pictured MAU profile is the Support Agent, not a guessed AI field or previous ticket agent.
+    if (profileSupportAgent) result.fields["Support Agent"] = profileSupportAgent;
     return result;
   }
 
@@ -1071,7 +1073,7 @@
         requestId,
         action,
         data: data || {}
-      }, location.protocol === "file:" ? "*" : location.origin);
+      }, location.protocol === "file:" || location.origin === "null" ? "*" : location.origin);
     });
   }
 
@@ -1158,7 +1160,7 @@
         const index = Number(selected.split(":")[1]);
         const tab = openEditTabs[index];
         if (!tab) { finish(null); return; }
-        finish({mode:"edit",editTabId:tab.tabId,editTicketId:tab.ticketId,confirmedEdit:true,replaceIdentity:replace.checked});
+        finish({mode:"edit",editTabId:tab.tabId,editTicketId:tab.ticketId,confirmedEdit:true,replaceIdentity:replace.checked,updateSupportAgent:true});
       });
       buttons.append(cancel,confirm);
       dialog.append(title, description, from, choices, verifyLabel,replaceLabel,note,buttons);
@@ -1219,21 +1221,33 @@
         !String(payload.fields.Subject || "").trim()) {
       throw new Error("Prepare and review the Managed Services ticket first.");
     }
-    const targetUrl=String(newTicketUrl||"").trim();
-    const validNewUrl=/^https:\/\/helpcenter\.amti\.com\.ph\/agent\/amtiphilippines\/([a-z0-9_-]+)\/tickets\/new\/?$/i.test(targetUrl);
+    const MANAGED_URL="https://helpcenter.amti.com.ph/agent/amtiphilippines/managed-shared-service/tickets/new";
+    const targetUrl=MANAGED_URL;
+    const validNewUrl=true;
     const guide=window.MAUZohoExtensionGuide;
     if (!guide || !(await guide.check())) {guide?.open();throw new Error("Connect the MAU Zoho extension, then try again.");}
     const version=String(guide.version||'');
-    if (!/^([2-9]\.|1\.(?:[5-9]|[1-9][0-9])\.)/.test(version)) {
-      guide.open();throw new Error("Update the MAU Zoho extension to v1.5 for Managed Services autofill.");
+    if (!/^([2-9]\.|1\.(?:[6-9]|[1-9][0-9])\.)/.test(version)) {
+      guide.open();throw new Error("Update the MAU Zoho extension to v1.6 for Managed Services autofill.");
     }
     const listing=await sendExtensionBridgeRequest(ACTION_LIST_EDIT,{});
     if (!listing || listing.ok === false) throw new Error("Could not inspect open Zoho tabs.");
-    const department=validNewUrl ? targetUrl.match(/\/agent\/amtiphilippines\/([^/]+)\/tickets\/new/i)[1] : "";
     const editTabs=(listing.tabs||[]).filter(tab =>
-      !department || String(tab.url||"").includes(`/amtiphilippines/${department}/tickets/edit/`));
-    const destination=await chooseTicketDestination(editTabs,payload);
-    if (!destination) return {cancelled:true};
+      String(tab.url||"").includes('/amtiphilippines/managed-shared-service/tickets/edit/'));
+    // Managed Services: reuse the open edit page without a dialog. Prefer a visible
+    // ticket-number match, otherwise the active department tab. Preserve ticket URL ID.
+    const ticketNumber=String(payload.ticketNumber||'').replace(/[^0-9]/g,'');
+    const matching=editTabs.find(tab=>ticketNumber && new RegExp('(?:^|\\D)'+ticketNumber+'(?:\\D|$)').test(String(tab.title||'')));
+    const selected=matching || editTabs.find(tab=>tab.active) || (editTabs.length===1 ? editTabs[0] : null);
+    // A visible, different Zoho ticket number is strong evidence of a wrong tab.
+    // No dialog: ask employees to open the correct edit page before retrying.
+    const titleNumber=String(selected?.title||'').match(/(?:Ticket\s*#|#)(\d{5,8})\b/i)?.[1]||'';
+    if(ticketNumber && titleNumber && titleNumber!==ticketNumber)
+      throw new Error('The open Managed Services edit tab is for a different ticket. Open Ticket #'+ticketNumber+' in Zoho and try again.');
+    const destination=selected ? {mode:'edit',editTabId:selected.tabId,
+      editTicketId:selected.ticketId,autoManagedEdit:true,replaceIdentity:false,updateSupportAgent:true} : {mode:'new'};
+    // If several edit tabs are open and none is clearly active, avoid a wrong-ticket update.
+    if(editTabs.length>1 && !selected) throw new Error('Open the Managed Services ticket you want to edit, then try Create Ticket again.');
     if (destination.mode === "new" && !validNewUrl) {
       throw new Error("Enter the correct Zoho New Ticket page address.");
     }

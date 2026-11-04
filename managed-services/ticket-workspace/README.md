@@ -11,7 +11,7 @@ Open **Managed Services Tickets** in the MAU sidebar. This workspace is separate
 
 ### Zoho extension
 
-Install **MAU Zoho Extension v1.5** (included in the app ZIP), then reload MAU and open Zoho. In Chrome, open `chrome://extensions` and use **Developer mode → Load unpacked** to select the extracted `MAU-Zoho-Extension` folder. This version adds Managed Services `Layout`, `Assigned Engineer`, location and serial-number support. Existing SANDZ autofill remains available.
+Install **MAU Zoho Extension v1.6** (included in the app ZIP), then reload MAU and open Zoho. In Chrome, open `chrome://extensions` and use **Developer mode → Load unpacked** to select the extracted `MAU-Zoho-Extension` folder. This version adds Managed Services `Layout`, `Assigned Engineer`, location and serial-number support. Existing SANDZ autofill remains available.
 
 The default New Ticket address is `https://helpcenter.amti.com.ph/agent/amtiphilippines/sandz/tickets/new`. Change this under **Zoho settings** if you use a different Zoho department. The actual department and layout must be verified before saving.
 

@@ -3,7 +3,7 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "MAU-3.2-managed-ticket";
+  const SCRIPT_REVISION = "MAU-3.2.1-managed-edit-autofill";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
   const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
@@ -1617,7 +1617,7 @@
     if (!payload || !payload.fields) return "";
     if (label === DESCRIPTION_RETRY_LABEL) {
       return String(payload.source === "Managed Services Ticket Workspace"
-        ? (payload.fields[DESCRIPTION_RETRY_LABEL] || payload.fields[DESCRIPTION_FALLBACK_LABEL] || "")
+        ? (payload.fields[DESCRIPTION_RETRY_LABEL] || "")
         : (payload.fields[DESCRIPTION_FALLBACK_LABEL] || payload.fields[DESCRIPTION_RETRY_LABEL] || "")).trim();
     }
     if (label === "Support Level") {
@@ -1870,11 +1870,12 @@
           setPanelStatus("Ticket changed; autofill stopped.","error");
           return;
         }
-        if (editing && (["Status", "Support Agent", "Support Level", "Channel", "Ticket Source", "Assigned Engineer", "Layout"].includes(label) ||
+        if (editing && (["Status", "Support Level", "Channel", "Ticket Source", "Assigned Engineer", "Layout"].includes(label) ||
+            (label === "Support Agent" && !payload.__mauEdit.updateSupportAgent) ||
             (!payload.__mauEdit.replaceIdentity && ["Customer Company Name", "Subject", "Description", "Issue Description"].includes(label)))) {
           continue;
         }
-        if (SKIP_AUTOFILL_LABELS.has(label) && !(isManaged && ["Account Name", "Contact Name", "Mobile Number"].includes(label))) {
+        if (SKIP_AUTOFILL_LABELS.has(label) && !(isManaged && ["Account Name", "Contact Name", "Phone", "Mobile Number"].includes(label))) {
           continue;
         }
 
@@ -1914,17 +1915,6 @@
 
       if (editing) {
         panel("Existing Serial Number and ownership fields were preserved.", "info");
-      } else if (supportAgentStageReached && !isManaged) {
-        const serialCleanup = await clearProtectedField("Serial Number");
-        if (serialCleanup.ok && serialCleanup.cleared) {
-          panel("Cleared protected field: Serial Number", "info");
-        } else if (serialCleanup.ok) {
-          panel("Protected field already clean: Serial Number", "info");
-        } else {
-          panel(`Protected field cleanup skipped: Serial Number (${serialCleanup.reason})`, "error");
-        }
-      } else if (!isManaged) {
-        panel("Protected field cleanup skipped: Support Agent stage did not run.", "error");
       }
 
       const totalElapsedMs = Date.now() - autofillStartedAt;

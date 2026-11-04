@@ -120,17 +120,22 @@
   async function handleExistingEdit(message) {
     const tabId = Number(message.editTabId || 0);
     const ticketId = String(message.editTicketId || "");
-    if (!Number.isSafeInteger(tabId) || tabId < 1 || !/^\d+$/.test(ticketId) || message.confirmedEdit !== true) {
+    const allowedAuto=message.autoManagedEdit===true &&
+      message.payload?.source==='Managed Services Ticket Workspace';
+    if (!Number.isSafeInteger(tabId) || tabId < 1 || !/^\d+$/.test(ticketId) ||
+      (message.confirmedEdit!==true && !allowedAuto)) {
       throw new Error("Select and confirm an existing Zoho Edit Ticket tab first.");
     }
     const tab = await getTabById(tabId);
     const parsed = parseEditUrl(tab && tab.url);
-    if (!parsed || parsed.ticketId !== ticketId) {
+    if (!parsed || parsed.ticketId !== ticketId ||
+        (allowedAuto && !parsed.url.includes('/managed-shared-service/tickets/edit/'))) {
       throw new Error("The selected Zoho edit tab changed or was closed. Check tabs and choose again.");
     }
     const payload = { ...message.payload, __mauEdit: {
       mode: "edit", ticketId,
-      replaceIdentity: message.replaceIdentity === true
+      replaceIdentity: message.replaceIdentity === true,
+      updateSupportAgent: message.updateSupportAgent === true
     } };
     targetUrlByTabId.set(tabId, parsed.url);
     await setStoredTabId(tabId);

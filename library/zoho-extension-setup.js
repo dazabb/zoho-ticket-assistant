@@ -37,11 +37,11 @@
         const version = String(data.response?.version || "");
         lastVersion=version;
         const parsed = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(version);
-        const compatible = parsed && (Number(parsed[1]) > 1 || (Number(parsed[1]) === 1 && Number(parsed[2]) >= 5));
+        const compatible = parsed && (Number(parsed[1]) > 1 || (Number(parsed[1]) === 1 && Number(parsed[2]) >= 6));
         if (data.ok && !compatible) {
           finish(false, version
-            ? `Extension v${version} is out of date. Install v1.5, then click Refresh.`
-            : "Please install extension v1.5, then click Refresh.");
+            ? `Extension v${version} is out of date. Install v1.6, then click Refresh.`
+            : "Please install extension v1.6, then click Refresh.");
         } else finish(!!data.ok, data.ok ? `Zoho is ready. You can use Create Ticket.` : undefined);
       }
       const timer = window.setTimeout(() => finish(false), timeoutMs);
