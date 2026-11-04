@@ -29,7 +29,7 @@
   }
 
   function aiEnabled() {
-    return Boolean($("useAiAssist")?.checked);
+    return true;
   }
 
   function aiReady() {
@@ -47,20 +47,7 @@
   }
 
   function refreshAiState() {
-    const state = $("aiState");
-    if (!state) return;
-    if (!aiEnabled()) {
-      state.textContent = "AI verification is off. Rule-based extraction will be used.";
-      state.className = "ai-state muted";
-      return;
-    }
-    if (aiReady()) {
-      state.textContent = "AI verification ready — uses your existing MAU Gemini key.";
-      state.className = "ai-state ready";
-    } else {
-      state.textContent = "AI verification selected, but no Gemini key is active. Rule-based extraction will be used until a key is set.";
-      state.className = "ai-state warn";
-    }
+    // Hidden, always-on AI verification when the shared MAU Gemini key is available.
   }
 
   function stripCodeFence(value) {
@@ -117,6 +104,15 @@
     if (!v || /^(?:mindanao|visayas|luzon|ncr|philippines)$/i.test(v)) return false;
     if (/^(?:gabc[_ -]|penshoppe$|oxygen$|forme$|regatta$|memo$)/i.test(v)) return false;
     return /(?:\b(?:floor|level|unit|stall|building|bldg|mall|city|brgy|barangay|street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd|pob\.?|poblacion|province|highway|corner|cor\.?|reclamation|compound|tower)\b|\d)/i.test(v);
+  }
+
+  function enforceGabcDefaults(sourceText, data) {
+    const out = {...(data || {})};
+    if (window.CSAParser?.isGabcSource?.(sourceText || "")) {
+      out.contact_name = "Francis Jan Mataberde";
+      out.mobile_number = "09088909845";
+    }
+    return out;
   }
 
   function suspiciousTasks(tasks) {
@@ -281,6 +277,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
     } else if (Array.isArray(ai?.engineer_tasks) && ai.engineer_tasks.length) rejected.push("engineer_tasks");
 
     out.created_date = draft.created_date || window.CSAParser.todayPH();
+    Object.assign(out, enforceGabcDefaults(sourceText, out));
     out.ai_verification = {
       used: true,
       accepted_fields: [...new Set(accepted)],
@@ -290,7 +287,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
   }
 
   async function aiVerifyTicket(sourceText, draft) {
-    if (!aiEnabled() || !aiReady()) return {...draft, ai_verification:{used:false, reason: aiEnabled() ? "no-key" : "disabled"}};
+    if (!aiReady()) return {...draft, ai_verification:{used:false, reason:"no-key"}};
     const bridge = getGeminiBridge();
     const result = await bridge.generate({
       model: getGeminiModel(),
@@ -301,9 +298,11 @@ ${String(sourceText || "").slice(0, 28000)}`;
   }
 
   async function extractTicketHybrid(sourceText) {
-    const draft = window.CSAParser.extractTicketData(sourceText);
+    let draft = window.CSAParser.extractTicketData(sourceText);
+    draft = window.CSAParser.applySharedScheduleContext?.(sourceText, draft) || draft;
+    draft = enforceGabcDefaults(sourceText, draft);
     if (!draft.ticket_number) return draft;
-    if (!aiEnabled() || !aiReady()) return draft;
+    if (!aiReady()) return draft;
     return await aiVerifyTicket(sourceText, draft);
   }
 
@@ -313,12 +312,14 @@ ${String(sourceText || "").slice(0, 28000)}`;
     const seen = new Set();
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
-      const draft = window.CSAParser.extractTicketData(block);
+      let draft = window.CSAParser.extractTicketData(block);
+      draft = window.CSAParser.applySharedScheduleContext?.(sourceText, draft) || draft;
+      draft = enforceGabcDefaults(block, draft);
       const ticket = String(draft.ticket_number || "").replace(/\D/g, "");
       if (!ticket || seen.has(ticket)) continue;
       draft.ticket_number = ticket;
-      setStatus(aiEnabled() && aiReady() ? `AI checking ticket ${results.length + 1}…` : `Reading ticket ${results.length + 1}…`);
-      const item = aiEnabled() && aiReady() ? await aiVerifyTicket(block, draft) : draft;
+      setStatus(aiReady() ? `AI checking ticket ${results.length + 1}…` : `Reading ticket ${results.length + 1}…`);
+      const item = aiReady() ? await aiVerifyTicket(block, draft) : draft;
       seen.add(ticket);
       results.push(item);
     }
@@ -339,7 +340,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
     obj.visit_schedule = CSAParser.normalizeSchedule(obj.visit_schedule);
     obj.engineer_tasks = obj.engineer_tasks.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
     if (!obj.created_date) obj.created_date = CSAParser.todayPH();
-    return obj;
+    return enforceGabcDefaults($("ticketText")?.value || "", obj);
   }
 
   function fillForm(data) {
@@ -506,7 +507,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
     if (!text) return setStatus("Paste the Zoho ticket first.", "error");
     const button = $("quickCreateBtn");
     button.disabled = true;
-    setStatus(aiEnabled() && aiReady() ? "Reading ticket, AI-checking fields, then preparing CSA…" : "Reading ticket and preparing CSA…");
+    setStatus(aiReady() ? "Reading ticket, AI-checking fields, then preparing CSA…" : "Reading ticket and preparing CSA…");
     try {
       const data = await extractTicketHybrid(text);
       if (!data.ticket_number) throw new Error("Couldn't find the ticket number. Click Edit details first to add it.");
@@ -599,7 +600,9 @@ ${String(sourceText || "").slice(0, 28000)}`;
       btn.disabled = true;
       try {
         const ticket = await generateOne(item);
-        setStatus(`CSA #${ticket} downloaded.`, "success");
+        batch.splice(Number(btn.dataset.i), 1);
+        renderBatch();
+        setStatus(`CSA #${ticket} downloaded and removed from the batch.`, "success");
       } catch (err) {
         console.error(err);
         setStatus(err?.message || "Could not generate the DOCX.", "error");
@@ -630,7 +633,10 @@ ${String(sourceText || "").slice(0, 28000)}`;
       const normalized = batch.map(item => ({...item, visit_schedule: CSAParser.normalizeSchedule(item.visit_schedule || "")}));
       const blob = await window.CSADocx.generateBatchZip(templateBytes, normalized);
       triggerDownload(blob, "CSA_Batch.zip");
-      setStatus(`${batch.length} CSA file${batch.length === 1 ? "" : "s"} downloaded.`, "success");
+      const downloadedCount = batch.length;
+      batch.splice(0, batch.length);
+      renderBatch();
+      setStatus(`${downloadedCount} CSA file${downloadedCount === 1 ? "" : "s"} downloaded. Batch cleared automatically.`, "success");
     } catch (err) {
       console.error(err);
       setStatus(err?.message || "Could not generate the ZIP.", "error");
@@ -672,8 +678,6 @@ ${String(sourceText || "").slice(0, 28000)}`;
 
   $("quickCreateBtn").addEventListener("click", downloadFromPaste);
   $("aiRecheckBtn")?.addEventListener("click", recheckCurrentWithAi);
-  $("aiKeyBtn")?.addEventListener("click", openApiKeySettings);
-  $("useAiAssist")?.addEventListener("change", refreshAiState);
   $("extractBtn").addEventListener("click", extractTicket);
   $("extractAllBtn").addEventListener("click", extractAllTickets);
   $("generateBtn").addEventListener("click", generateDocx);
@@ -692,8 +696,6 @@ ${String(sourceText || "").slice(0, 28000)}`;
   renderBatch();
   updatePreview();
   verifyBundledTemplate();
-  refreshAiState();
-  window.setInterval(refreshAiState, 2500);
 
   // Browser QA hook. It is inert during normal use but lets automated checks
   // exercise the exact parser + DOCX generator used by GitHub Pages.

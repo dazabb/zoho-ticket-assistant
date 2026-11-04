@@ -216,14 +216,6 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
         <button class="btn" id="extractAllBtn" type="button">Add multiple tickets</button>
         <button class="btn text-button" id="extractBtn" type="button">Edit details first</button>
       </div>
-      <div class="ai-assist-row">
-        <div class="ai-copy">
-          <label class="ai-toggle"><input id="useAiAssist" type="checkbox" checked /><span>AI verify extraction <span class="ai-badge">Gemini</span></span></label>
-          <small>Uses the same personal Gemini key as Ticket Workspace. Rule-based extraction runs first; AI may correct only source-supported CSA fields.</small>
-          <span id="aiState" class="ai-state">Checking AI status…</span>
-        </div>
-        <div class="ai-tools"><button class="btn small" id="aiKeyBtn" type="button">Gemini API key</button></div>
-      </div>
       <div class="status" id="status" role="status" aria-live="polite"></div>
     </section>
 
@@ -261,7 +253,7 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
       <div id="analysisBox" class="analysis-box" aria-live="polite" hidden></div>
       <div class="actions">
         <button class="btn primary" id="generateBtn" type="button">Download edited CSA</button>
-        <button class="btn" id="aiRecheckBtn" type="button">AI recheck current fields</button>
+        <button class="btn" id="aiRecheckBtn" type="button">Recheck current fields</button>
         <button class="btn" id="addBatchBtn" type="button">Save to multiple tickets</button>
         <button class="btn ghost" id="clearBtn" type="button">Clear details</button>
       </div>
@@ -278,7 +270,7 @@ footer { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 2
       <div class="section-head batch-head">
         <div><span class="step">2</span><h2>Multiple CSA files</h2><span id="batchCount" class="count-pill"></span></div>
         <div class="head-actions">
-          <button class="btn ghost small" id="clearBatchBtn" type="button">Clear batch</button>
+          <button class="btn ghost small" id="clearBatchBtn" type="button">Clear Batch</button>
           <button class="btn primary" id="downloadBatchBtn" type="button" disabled>Download all</button>
         </div>
       </div>
@@ -308,6 +300,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   <script>(() => {
   const PLACEHOLDERS = new Set(["", "-", "none", "-none-", "n/a", "0", "dd mmm yyyy"]);
   const REGION_ONLY = new Set(["MINDANAO", "VISAYAS", "LUZON", "NCR"]);
+  const GABC_CONTACT_NAME = "Francis Jan Mataberde";
+  const GABC_MOBILE_NUMBER = "09088909845";
 
   // CSA site knowledge is a fallback only. Explicit Address / Site Address
   // text in the CURRENT ticket always wins. This helps older Zoho tickets
@@ -570,6 +564,83 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return ticketMatches[0] || "";
   }
 
+  function isGabcSource(src = "") {
+    return /(?:\bGABC(?:[_\s-]|\b)|\bGolden\s+ABC(?:,\s*Incorporated)?\b|@goldenabc\.com\b)/i.test(String(src || ""));
+  }
+
+  function mergeDateAndTime(dateValue = "", timeValue = "") {
+    const date = parseScheduleFragment(dateValue) || normalizeSchedule(dateValue);
+    if (!date) return "";
+    const timeMatch = normalizeSpace(timeValue).match(/\b(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\b/i);
+    if (!timeMatch) return normalizeSchedule(date);
+    const time = canonicalTime(timeMatch[1], timeMatch[2] || "00", timeMatch[3]);
+    return time ? `${normalizeSchedule(date).replace(/\s+\d{1,2}:\d{2}\s*(?:AM|PM)$/i, "")} ${time}` : normalizeSchedule(date);
+  }
+
+  function scheduleSubjectLabel(value = "") {
+    return normalizeSpace(value)
+      .replace(/^\s*(?:X|P|R|F|M|O2)\d{2,4}\s*[-–—]\s*/i, "")
+      .replace(/\s*[-–—]\s*Serial\s*#?\s*:\s*.*$/i, "")
+      .trim();
+  }
+
+  function sharedScheduleAssignments(text) {
+    const ls = lines(text);
+    const entries = [];
+    for (let i = 0; i < ls.length; i++) {
+      const m = ls[i].match(/^Schedule\s*:\s*(.+)$/i);
+      if (!m) continue;
+      let timeValue = "";
+      let j = i + 1;
+      while (j < ls.length && j <= i + 4) {
+        if (!ls[j]) { j++; continue; }
+        const tm = ls[j].match(/^Time\s*:\s*(.+)$/i);
+        if (tm) { timeValue = tm[1]; j++; }
+        break;
+      }
+      const schedule = mergeDateAndTime(m[1], timeValue);
+      if (!schedule) continue;
+
+      const subjects = [];
+      for (let k = i + 1; k < ls.length; k++) {
+        const line = ls[k];
+        if (/^Schedule\s*:/i.test(line) && k > i + 1) break;
+        if (/^(?:Kindly|Please)\s+bring\b|^Kindly\s+provide\b|^Tickets$/i.test(line)) break;
+        if (/^Time\s*:/i.test(line) || !line) continue;
+        const sm = line.match(/^(.+?)\s*[-–—]\s*Serial\s*#?\s*:\s*([^\s]+)\s*$/i);
+        if (!sm) continue;
+        const label = scheduleSubjectLabel(sm[1]);
+        const serial = normalizeSpace(sm[2]).replace(/[\\]/g, "");
+        if (serial) subjects.push({ serial, label, raw: line });
+      }
+      if (subjects.length) entries.push({ schedule, subjects, raw: ls.slice(i, Math.min(ls.length, i + 12)).join("\n") });
+    }
+    return entries;
+  }
+
+  function applySharedScheduleContext(text, item) {
+    const out = { ...(item || {}) };
+    const entries = sharedScheduleAssignments(text);
+    if (!entries.length) return out;
+    const serial = normalizeSpace(out.serial_number || "").toUpperCase();
+    const company = normalizeSpace(out.company_name || out.store_name || "");
+    let best = null;
+    for (const entry of entries) {
+      for (const subject of entry.subjects) {
+        let score = 0;
+        if (serial && serial === normalizeSpace(subject.serial).toUpperCase()) score += 100;
+        if (company && samePlaceLabel(company, subject.label)) score += 45;
+        if (!best || score > best.score) best = { score, entry, subject };
+      }
+    }
+    if (best && best.score > 0) {
+      out.visit_schedule = best.entry.schedule;
+      out.schedule_source = "shared-header";
+      out.schedule_evidence = `Schedule: ${best.entry.schedule} | ${best.subject.raw}`;
+    }
+    return out;
+  }
+
   function scheduleCandidates(src) {
     const candidates = [];
     const add = (raw, index) => {
@@ -640,6 +711,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       .toLowerCase()
       .replace(/\b(?:stall|store|branch|outlet|site)\s*#?\s*:?/g, " ")
       .replace(/\b(?:x|p|r|f|m|o2)\d{2,4}\s*[-–—]?\s*/g, " ")
+      .replace(/\b(?:x|p|r|f|m|o2)\s*[-–—]?\s*btq\b/g, " ")
       .replace(/\b(?:btq|boutique)\b/g, " ")
       .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
@@ -759,6 +831,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }
     mobile=mobile?normalizeSpace(mobile).replace(/[^+\d]/g,''):'';
     if(['0','+0'].includes(mobile)) mobile='';
+    let resolvedContactName = normalizeSpace(contactName);
+    if (isGabcSource(src)) {
+      resolvedContactName = GABC_CONTACT_NAME;
+      mobile = GABC_MOBILE_NUMBER;
+    }
     const schedules=scheduleCandidates(src);
     const visitSchedule=schedules.length?schedules[0].value:'';
 
@@ -813,7 +890,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       company_name:normalizeSpace(companyName),
       brand_name:normalizeSpace(brandName),
       store_name:normalizeSpace(storeName),
-      contact_name:normalizeSpace(contactName),
+      contact_name:resolvedContactName,
       mobile_number:mobile,
       visit_schedule:visitSchedule,
       created_date:todayPH(),
@@ -869,7 +946,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const items = [];
     const seen = new Set();
     for (const block of blocks) {
-      const item = extractTicketData(block);
+      let item = extractTicketData(block);
+      item = applySharedScheduleContext(text, item);
       const ticket = String(item.ticket_number || "").replace(/\D/g, "");
       if (!ticket || seen.has(ticket)) continue;
       item.ticket_number = ticket;
@@ -920,6 +998,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     normalizeSchedule,
     normalizeSpace,
     parseScheduleFragment,
+    isGabcSource,
+    sharedScheduleAssignments,
+    applySharedScheduleContext,
     siteKnowledge: SITE_KNOWLEDGE,
     findKnownSite,
     addressStrength
@@ -1207,7 +1288,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   function aiEnabled() {
-    return Boolean($("useAiAssist")?.checked);
+    return true;
   }
 
   function aiReady() {
@@ -1225,20 +1306,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
 
   function refreshAiState() {
-    const state = $("aiState");
-    if (!state) return;
-    if (!aiEnabled()) {
-      state.textContent = "AI verification is off. Rule-based extraction will be used.";
-      state.className = "ai-state muted";
-      return;
-    }
-    if (aiReady()) {
-      state.textContent = "AI verification ready — uses your existing MAU Gemini key.";
-      state.className = "ai-state ready";
-    } else {
-      state.textContent = "AI verification selected, but no Gemini key is active. Rule-based extraction will be used until a key is set.";
-      state.className = "ai-state warn";
-    }
+    // Hidden, always-on AI verification when the shared MAU Gemini key is available.
   }
 
   function stripCodeFence(value) {
@@ -1295,6 +1363,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     if (!v || /^(?:mindanao|visayas|luzon|ncr|philippines)$/i.test(v)) return false;
     if (/^(?:gabc[_ -]|penshoppe$|oxygen$|forme$|regatta$|memo$)/i.test(v)) return false;
     return /(?:\b(?:floor|level|unit|stall|building|bldg|mall|city|brgy|barangay|street|st\.?|road|rd\.?|avenue|ave\.?|boulevard|blvd|pob\.?|poblacion|province|highway|corner|cor\.?|reclamation|compound|tower)\b|\d)/i.test(v);
+  }
+
+  function enforceGabcDefaults(sourceText, data) {
+    const out = {...(data || {})};
+    if (window.CSAParser?.isGabcSource?.(sourceText || "")) {
+      out.contact_name = "Francis Jan Mataberde";
+      out.mobile_number = "09088909845";
+    }
+    return out;
   }
 
   function suspiciousTasks(tasks) {
@@ -1459,6 +1536,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
     } else if (Array.isArray(ai?.engineer_tasks) && ai.engineer_tasks.length) rejected.push("engineer_tasks");
 
     out.created_date = draft.created_date || window.CSAParser.todayPH();
+    Object.assign(out, enforceGabcDefaults(sourceText, out));
     out.ai_verification = {
       used: true,
       accepted_fields: [...new Set(accepted)],
@@ -1468,7 +1546,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
   }
 
   async function aiVerifyTicket(sourceText, draft) {
-    if (!aiEnabled() || !aiReady()) return {...draft, ai_verification:{used:false, reason: aiEnabled() ? "no-key" : "disabled"}};
+    if (!aiReady()) return {...draft, ai_verification:{used:false, reason:"no-key"}};
     const bridge = getGeminiBridge();
     const result = await bridge.generate({
       model: getGeminiModel(),
@@ -1479,9 +1557,11 @@ ${String(sourceText || "").slice(0, 28000)}`;
   }
 
   async function extractTicketHybrid(sourceText) {
-    const draft = window.CSAParser.extractTicketData(sourceText);
+    let draft = window.CSAParser.extractTicketData(sourceText);
+    draft = window.CSAParser.applySharedScheduleContext?.(sourceText, draft) || draft;
+    draft = enforceGabcDefaults(sourceText, draft);
     if (!draft.ticket_number) return draft;
-    if (!aiEnabled() || !aiReady()) return draft;
+    if (!aiReady()) return draft;
     return await aiVerifyTicket(sourceText, draft);
   }
 
@@ -1491,12 +1571,14 @@ ${String(sourceText || "").slice(0, 28000)}`;
     const seen = new Set();
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
-      const draft = window.CSAParser.extractTicketData(block);
+      let draft = window.CSAParser.extractTicketData(block);
+      draft = window.CSAParser.applySharedScheduleContext?.(sourceText, draft) || draft;
+      draft = enforceGabcDefaults(block, draft);
       const ticket = String(draft.ticket_number || "").replace(/\D/g, "");
       if (!ticket || seen.has(ticket)) continue;
       draft.ticket_number = ticket;
-      setStatus(aiEnabled() && aiReady() ? `AI checking ticket ${results.length + 1}…` : `Reading ticket ${results.length + 1}…`);
-      const item = aiEnabled() && aiReady() ? await aiVerifyTicket(block, draft) : draft;
+      setStatus(aiReady() ? `AI checking ticket ${results.length + 1}…` : `Reading ticket ${results.length + 1}…`);
+      const item = aiReady() ? await aiVerifyTicket(block, draft) : draft;
       seen.add(ticket);
       results.push(item);
     }
@@ -1517,7 +1599,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
     obj.visit_schedule = CSAParser.normalizeSchedule(obj.visit_schedule);
     obj.engineer_tasks = obj.engineer_tasks.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
     if (!obj.created_date) obj.created_date = CSAParser.todayPH();
-    return obj;
+    return enforceGabcDefaults($("ticketText")?.value || "", obj);
   }
 
   function fillForm(data) {
@@ -1684,7 +1766,7 @@ ${String(sourceText || "").slice(0, 28000)}`;
     if (!text) return setStatus("Paste the Zoho ticket first.", "error");
     const button = $("quickCreateBtn");
     button.disabled = true;
-    setStatus(aiEnabled() && aiReady() ? "Reading ticket, AI-checking fields, then preparing CSA…" : "Reading ticket and preparing CSA…");
+    setStatus(aiReady() ? "Reading ticket, AI-checking fields, then preparing CSA…" : "Reading ticket and preparing CSA…");
     try {
       const data = await extractTicketHybrid(text);
       if (!data.ticket_number) throw new Error("Couldn't find the ticket number. Click Edit details first to add it.");
@@ -1777,7 +1859,9 @@ ${String(sourceText || "").slice(0, 28000)}`;
       btn.disabled = true;
       try {
         const ticket = await generateOne(item);
-        setStatus(`CSA #${ticket} downloaded.`, "success");
+        batch.splice(Number(btn.dataset.i), 1);
+        renderBatch();
+        setStatus(`CSA #${ticket} downloaded and removed from the batch.`, "success");
       } catch (err) {
         console.error(err);
         setStatus(err?.message || "Could not generate the DOCX.", "error");
@@ -1808,7 +1892,10 @@ ${String(sourceText || "").slice(0, 28000)}`;
       const normalized = batch.map(item => ({...item, visit_schedule: CSAParser.normalizeSchedule(item.visit_schedule || "")}));
       const blob = await window.CSADocx.generateBatchZip(templateBytes, normalized);
       triggerDownload(blob, "CSA_Batch.zip");
-      setStatus(`${batch.length} CSA file${batch.length === 1 ? "" : "s"} downloaded.`, "success");
+      const downloadedCount = batch.length;
+      batch.splice(0, batch.length);
+      renderBatch();
+      setStatus(`${downloadedCount} CSA file${downloadedCount === 1 ? "" : "s"} downloaded. Batch cleared automatically.`, "success");
     } catch (err) {
       console.error(err);
       setStatus(err?.message || "Could not generate the ZIP.", "error");
@@ -1850,8 +1937,6 @@ ${String(sourceText || "").slice(0, 28000)}`;
 
   $("quickCreateBtn").addEventListener("click", downloadFromPaste);
   $("aiRecheckBtn")?.addEventListener("click", recheckCurrentWithAi);
-  $("aiKeyBtn")?.addEventListener("click", openApiKeySettings);
-  $("useAiAssist")?.addEventListener("change", refreshAiState);
   $("extractBtn").addEventListener("click", extractTicket);
   $("extractAllBtn").addEventListener("click", extractAllTickets);
   $("generateBtn").addEventListener("click", generateDocx);
@@ -1870,8 +1955,6 @@ ${String(sourceText || "").slice(0, 28000)}`;
   renderBatch();
   updatePreview();
   verifyBundledTemplate();
-  refreshAiState();
-  window.setInterval(refreshAiState, 2500);
 
   // Browser QA hook. It is inert during normal use but lets automated checks
   // exercise the exact parser + DOCX generator used by GitHub Pages.
@@ -1892,7 +1975,6 @@ ${String(sourceText || "").slice(0, 28000)}`;
   };
 
 })();
-
 </script>
 </body>
 </html>
