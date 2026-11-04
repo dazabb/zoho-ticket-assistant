@@ -1,0 +1,24 @@
+MAU Operation Desk — CSA AI Verification Patch v3.1.0
+
+Install
+1. Close or refresh the MAU Operation Desk tab.
+2. Extract this patch over your existing zoho-ticket-assistant repository/folder.
+3. Preserve the path: managed-services/csa-generator/
+4. Replace/overwrite the files when prompted.
+5. If using GitHub Pages, commit/push and wait for Pages to redeploy, then hard-refresh (Ctrl+F5).
+
+How it works
+- The CSA Generator reuses the Gemini API key configured in the main MAU Operation Desk toolbar.
+- AI verify extraction is enabled by default, but rule-based extraction still works when no key is present.
+- No new API key file is included.
+- AI verification consumes Gemini requests in the same usage counter as Ticket Workspace.
+
+Files replaced
+- managed-services/csa-generator/index.html
+- managed-services/csa-generator/app.js
+- managed-services/csa-generator/README.md
+
+New documentation
+- README-CHANGES-v3.1.0.md
+
+No changes to the DOCX template are required.
