@@ -5,3 +5,10 @@
 
 .heading-actions{display:flex;gap:9px;align-items:center}.heading-actions a.outline{text-decoration:none;white-space:nowrap}.heading-actions a.outline:hover{background:var(--soft)}
 @media(max-width:760px){.page-heading{flex-wrap:wrap}.heading-actions{width:100%}}
+
+/* Editable client email Cc, stored separately for each profile and customer. */
+.cc-block{margin-top:16px}.cc-block label,.email-body-label{display:block;font-size:12px;color:#495b75;font-weight:700;margin-bottom:7px}
+.cc-input{width:100%;min-height:108px;border:1px solid var(--line);border-radius:9px;background:var(--soft);padding:11px 13px;color:var(--ink);line-height:1.5;resize:vertical}
+.cc-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:9px}.cc-actions .outline{padding:8px 12px}
+.email-body-label{margin-top:16px;margin-bottom:0}.email-body-label + .prepared-text{margin-top:8px}
+.dark .cc-block label,.dark .email-body-label{color:var(--muted)}

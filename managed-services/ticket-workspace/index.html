@@ -50,7 +50,14 @@
         </div>
         <div id="emailView" hidden>
           <div class="field-title"><h3>Client email</h3><span class="quiet">Review the message before sending.</span></div>
-          <label for="emailTicketNumber">Zoho ticket number</label><input id="emailTicketNumber" inputmode="numeric" placeholder="Enter ticket number after creating it"><textarea class="prepared-text" id="emailText" aria-label="Editable client email"></textarea><div class="action-row"><button type="button" id="copyEmail" class="outline">Copy email</button></div>
+          <label for="emailTicketNumber">Zoho ticket number</label><input id="emailTicketNumber" inputmode="numeric" placeholder="Enter ticket number after creating it">
+          <div class="cc-block">
+            <label for="emailCc">Cc</label>
+            <textarea id="emailCc" class="cc-input" rows="5" spellcheck="false" placeholder="Email addresses, separated by commas or new lines" aria-label="Client email Cc recipients"></textarea>
+            <div class="cc-actions"><button type="button" id="saveCc" class="outline">Save Cc</button><button type="button" id="copyCc" class="outline">Copy Cc</button><span id="ccStatus" class="quiet" aria-live="polite"></span></div>
+          </div>
+          <label for="emailText" class="email-body-label">Email</label>
+          <textarea class="prepared-text" id="emailText" aria-label="Editable client email"></textarea><div class="action-row"><button type="button" id="copyEmail" class="outline">Copy email</button></div>
         </div>
         <div id="notesView" hidden>
           <div class="field-title"><h3>Engineer notes</h3><span class="quiet">Requested work and safe next steps</span></div>

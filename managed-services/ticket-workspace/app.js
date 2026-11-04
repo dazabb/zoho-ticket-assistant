@@ -15,9 +15,24 @@
     ['engineerTasks','Engineer Task / Activity','tasks'],['description','Description','textarea']
   ];
   const state={profileId:'guest',profileAgent:'',draft:null,mode:'zoho',images:[],messages:{zoho:[],email:[],notes:[]},busy:false,
-    emailWasEdited:false,notesWasEdited:false,sessions:[],activeSessionId:''};
+    emailWasEdited:false,notesWasEdited:false,sessions:[],activeSessionId:'',ccScopeKey:''};
   const SESSIONS_PREFIX='mauManagedTicketsV01::';
   const ZOHO_URL_KEY='mauManagedNewZohoUrlV1';
+  const CC_STORAGE_PREFIX='mauManagedEmailCcV1::';
+  // These recipients apply ONLY to Golden ABC Managed Services tickets.
+  // Each MAU profile can save a different list per customer on this browser.
+  const GOLDEN_ABC_CC=[
+    'franco.mamigo@goldenabc.com',
+    'eugeneben.tumamao@goldenabc.com',
+    'francisjan.mataberde@goldenabc.com',
+    'carloejoy.pena@goldenabc.com',
+    'jerico.tolentino@goldenabc.com',
+    'pb.digos.gaisano@goldenabc.com',
+    'mary.sanz@amti.com.ph',
+    'mcsi-helpdesk@mcsi.ph',
+    'sobando@mcsi.ph',
+    'Diana.Cosino@amti.com.ph'
+  ].join('\n');
   const DEFAULT_URL='https://helpcenter.amti.com.ph/agent/amtiphilippines/managed-shared-service/tickets/new';
   const profiles={
     'mauris-mananzan':'Mauris Mananzan','jacob-labor':'Jacob Labor',
@@ -32,6 +47,59 @@
   function sessionKey(){return SESSIONS_PREFIX+state.profileId;}
   function sessionHistoryKey(){return sessionKey()+'::history';}
   function show(message,kind=''){const el=$('status');el.textContent=message;el.className='status'+(kind?' is-'+kind:'');}
+  function ccCustomerKey(d){
+    if(!d)return '';
+    const account=text(d.accountName),company=text(d.company);
+    if(/golden\s*abc|\bgabc[_\s-]|\bgabc\b/i.test(account+' '+company))return 'golden-abc';
+    // No company-wide CC is ever carried to an unrelated customer.
+    const name=account&&!/verify|select|unknown|none/i.test(account)?account:company;
+    return name?name.toLocaleLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,100):'';
+  }
+  function currentCcKey(){
+    const customer=ccCustomerKey(state.draft);
+    return customer?CC_STORAGE_PREFIX+state.profileId+'::'+customer:'';
+  }
+  function parseCc(value){
+    const recipients=[],invalid=[],seen=new Set();
+    for(const entry of String(value||'').split(/[,;\n]+/)){
+      const part=entry.trim();if(!part)continue;
+      const wrapped=part.match(/<([^<>]+)>/);
+      const address=(wrapped?wrapped[1]:part).trim();
+      if(!/^[^\s<>@,;]+@[^\s<>@,;]+\.[A-Za-z]{2,}$/.test(address)){
+        invalid.push(part);continue;
+      }
+      const lower=address.toLowerCase();
+      if(!seen.has(lower)){seen.add(lower);recipients.push(address);}
+    }
+    return {recipients,invalid};
+  }
+  function refreshCc(){
+    const key=currentCcKey();
+    if(key===state.ccScopeKey)return;
+    state.ccScopeKey=key;
+    let stored=null;
+    if(key){try{stored=localStorage.getItem(key);}catch(_){}}
+    $('emailCc').value=stored!==null?stored:(key.endsWith('::golden-abc')?GOLDEN_ABC_CC:'');
+    $('ccStatus').textContent=key?'Cc for this customer and profile.':'';
+  }
+  function saveCc(){
+    if(!state.draft){show('Prepare a ticket before saving Cc.','error');return;}
+    const parsed=parseCc($('emailCc').value);
+    if(parsed.invalid.length){show('Please check this Cc address: '+parsed.invalid[0],'error');$('emailCc').focus();return;}
+    const key=currentCcKey();
+    if(!key){show('Add the customer name before saving Cc.','error');return;}
+    const result=parsed.recipients.join('\n');
+    try{localStorage.setItem(key,result);}catch(_){show('Could not save Cc in this browser.','error');return;}
+    $('emailCc').value=result;
+    $('ccStatus').textContent=parsed.recipients.length+' Cc recipient'+(parsed.recipients.length===1?'':'s')+' saved for this customer and profile.';
+    show('Cc recipients saved.','success');
+  }
+  function copyCc(){
+    const parsed=parseCc($('emailCc').value);
+    if(parsed.invalid.length){show('Please check this Cc address: '+parsed.invalid[0],'error');return;}
+    if(!parsed.recipients.length){show('Add Cc recipients before copying.','error');return;}
+    copy(parsed.recipients.join(', '));
+  }
   function save(){
     if(!state.draft)return;
     // Never persist screenshots or Gemini keys. Conversations belong to this MAU profile on this browser.
@@ -79,6 +147,7 @@
       state.profileAgent=currentAgent;lockProfileAgent();render();return;
     }
     clearScreens();
+    state.ccScopeKey='';
     state.profileId=desired;state.profileAgent=currentAgent;
     state.draft=null;state.images=[];state.messages={zoho:[],email:[],notes:[]};state.emailWasEdited=false;state.notesWasEdited=false;state.activeSessionId='';state.sessions=[];
     $('source').value='';$('emailText').value='';$('notesText').value='';$('emailTicketNumber').value='';
@@ -147,6 +216,7 @@
     if(key==='supportAgent' && state.profileAgent){state.draft.supportAgent=state.profileAgent;return;}
     if(key==='engineerTasks')state.draft[key]=value.split('\n').map(x=>x.replace(/^\s*[-*•\d.)]+\s*/,'').trim()).filter(Boolean);
     else state.draft[key]=value;
+    if(key==='company'||key==='accountName')refreshCc();
     if(key==='serialNumber'){
       const prior=state.draft.subject;
       state.draft.serialNumber=M.serialClean(value);
@@ -185,7 +255,7 @@
     $('zohoView').hidden=!(exists&&state.mode==='zoho');
     $('emailView').hidden=!(exists&&state.mode==='email');
     $('notesView').hidden=!(exists&&state.mode==='notes');
-    if(exists){renderFields();syncSupportingDrafts();}
+    if(exists){renderFields();syncSupportingDrafts();refreshCc();}
     document.querySelectorAll('.tab').forEach(btn=>{
       const is=btn.dataset.mode===state.mode;
       btn.classList.toggle('active',is);btn.setAttribute('aria-selected',String(is));
@@ -342,7 +412,7 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
     finally{state.busy=false;$('createTicket').disabled=false;}
   }
   function newTicket(){
-    clearScreens();state.draft=null;state.messages={zoho:[],email:[],notes:[]};state.emailWasEdited=false;state.notesWasEdited=false;state.activeSessionId='';
+    clearScreens();state.draft=null;state.messages={zoho:[],email:[],notes:[]};state.emailWasEdited=false;state.notesWasEdited=false;state.activeSessionId='';state.ccScopeKey='';
     $('source').value='';$('emailText').value='';$('notesText').value='';$('emailTicketNumber').value='';
     try{localStorage.removeItem(sessionKey());}catch(_){}
     setMode('zoho');render();renderHistory();show('Ready for a new customer request.');$('source').focus();
@@ -383,6 +453,9 @@ Current approved draft:\n${context.slice(0,9000)}\n\nRecent discussion:\n${messa
     if(!state.draft)return;lockProfileAgent();const fields=M.payload(state.draft,{supportAgent:state.profileAgent}).fields;
     copy(Object.entries(fields).map(([k,v])=>k+': '+v).join('\n'));
   });
+  $('saveCc').addEventListener('click',saveCc);
+  $('copyCc').addEventListener('click',copyCc);
+  $('emailCc').addEventListener('input',()=>{$('ccStatus').textContent='Click Save Cc to keep your changes.';});
   $('copyEmail').addEventListener('click',()=>{
     if(!state.draft)return;
     if(!state.draft.ticketNumber){show('Enter the Zoho ticket number before copying the acknowledgment.','error');$('emailTicketNumber').focus();return;}
