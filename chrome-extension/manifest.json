@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MAU Operation Desk - Zoho Autofill",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Fill new or confirmed edit tickets in SANDZ and Managed Shared Service; manual Save/Submit.",
   "background": {
     "service_worker": "background.js"

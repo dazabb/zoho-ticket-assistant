@@ -4,7 +4,7 @@
 
 If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or disable it first to avoid duplicate autofill actions.
 
-1. Extract `MAU-Zoho-Extension-v1.6.zip` to a folder (MAU-Zoho-Extension).
+1. Extract `MAU-Zoho-Extension-v1.6.1.zip` to a folder (MAU-Zoho-Extension).
 2. Open **chrome://extensions/** in the Chrome address bar.
 3. Turn on **Developer mode** (upper-right corner).
 4. Click **Load unpacked** and select the extracted **MAU-Zoho-Extension** folder.
@@ -28,19 +28,19 @@ If an older **Ticket Assistant Zoho Autofill** extension is installed, remove or
 - On Chrome's extension details page, grant appropriate site access if Chrome requests it. Never use arbitrary extension installers or paste credentials into the extension.
 - Some Zoho fields might require manual selection if Zoho changed its form.
 
-### Existing ticket editing (v1.6)
+### Existing ticket editing (v1.6.1)
 
 - Keep a Zoho tab open at `https://helpcenter.amti.com.ph/agent/amtiphilippines/<department>/tickets/edit/<numeric-id>`.
 - In MAU, click **Create Ticket**. If edit tabs are present, select a specific ID or choose **Create a new Zoho ticket**. New is the default.
 - Selecting an existing ticket requires confirming the ID and customer.
-- Edit mode preserves the existing subject, description, customer company, status, agent, channel, ticket source, and serial number by default; the checkbox allows intentionally replacing the subject and description. Account Name is never changed by the extension.
+- **Edit mode always preserves Account Name, Contact Name, and Email**, even if MAU contains different values. The extension also preserves status, channel, ticket source, serial number, and ownership fields by default. Other editable ticket fields remain available for review.
 - On Zoho Edit Ticket forms, open the ticket property fields before autofilling. The extension won't fill if they're not available, and it never clicks Save.
 - If the edit tab changes between selection and filling, MAU cancels rather than sending data to a different ticket.
 
-### Managed Services Tickets (v1.6)
+### Managed Services Tickets (v1.6.1)
 
 - Open **Managed Services Tickets** in MAU, paste the customer's request, and select **Generate ticket**.
 - The Managed Shared Service layout is separate from the SANDZ ticket-mapping rules.
 - Subjects include the selected device serial number; source fields take priority over later technician updates about other devices.
 - **Create Ticket** selects the Managed Shared Service layout on the New Ticket form before filling its customer, category, location, support agent, assigned engineer and serial fields. If a dropdown cannot be identified or selected reliably, check it manually.
-- Existing Edit Tickets require explicitly selecting and confirming the ticket ID/customer. The extension never clicks Save or Submit.
+- Existing Managed Services Edit Ticket tabs are selected automatically when unambiguous; ticket ID and selected tab are checked before filling. Account Name, Contact Name and Email are never modified. The extension never clicks Save or Submit.

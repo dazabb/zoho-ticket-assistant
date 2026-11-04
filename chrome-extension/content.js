@@ -3,7 +3,7 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "MAU-3.2.1-managed-edit-autofill";
+  const SCRIPT_REVISION = "MAU-3.2.2-preserve-existing-ticket-contacts";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
   const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
@@ -23,6 +23,9 @@
     "Status",
     "Viber Details/Zoho Comment on Ticket for initial troubleshooting"
   ]);
+  // Existing Zoho tickets already have linked account/contact records.
+  // Never alter these fields on Edit Ticket, regardless of draft identity settings.
+  const PRESERVE_ON_EDIT = new Set(["Account Name", "Contact Name", "Email"]);
   const STRICT_DEFINITION_ONLY_LABELS = new Set([
     "Priority",
     "Severity Level",
@@ -1632,6 +1635,11 @@
   }
 
   async function fillLabel(label, value) {
+    // Second safety gate: even a future caller that bypasses FILL_ORDER cannot
+    // change existing ticket account/contact identity from an Edit Ticket page.
+    if (currentTicketMode() === "edit" && PRESERVE_ON_EDIT.has(label)) {
+      return { skipped: true, reason: "existing contact preserved" };
+    }
     const cleanValue = String(value || "").trim();
     if (!cleanValue) return { skipped: true, reason: "empty" };
 
@@ -1836,6 +1844,12 @@
       let firstFilledAt = 0;
       panel(`Loaded script revision ${SCRIPT_REVISION}`, "info");
       const editing = payload.__mauEdit?.mode === "edit";
+      // Stop all writes if a New Ticket payload is mistakenly delivered to
+      // an open Edit Ticket page. A verified ticket ID is required first.
+      if (!editing && currentTicketMode() === "edit") {
+        const warning = "This is an existing Zoho ticket. Open it through MAU Edit Ticket before autofill.";
+        setPanelStatus(warning, "error"); panel(warning, "error"); return;
+      }
       if (editing) {
         const safety = validateEditTab(payload);
         if (!safety.ok) { setPanelStatus(safety.reason, "error"); panel(safety.reason, "error"); return; }
@@ -1870,7 +1884,8 @@
           setPanelStatus("Ticket changed; autofill stopped.","error");
           return;
         }
-        if (editing && (["Status", "Support Level", "Channel", "Ticket Source", "Assigned Engineer", "Layout"].includes(label) ||
+        if (editing && (PRESERVE_ON_EDIT.has(label) ||
+            ["Status", "Support Level", "Channel", "Ticket Source", "Assigned Engineer", "Layout"].includes(label) ||
             (label === "Support Agent" && !payload.__mauEdit.updateSupportAgent) ||
             (!payload.__mauEdit.replaceIdentity && ["Customer Company Name", "Subject", "Description", "Issue Description"].includes(label)))) {
           continue;
@@ -1914,7 +1929,7 @@
       }
 
       if (editing) {
-        panel("Existing Serial Number and ownership fields were preserved.", "info");
+        panel("Existing Account Name, Contact Name, Email, Serial Number and ownership fields were preserved.", "info");
       }
 
       const totalElapsedMs = Date.now() - autofillStartedAt;
