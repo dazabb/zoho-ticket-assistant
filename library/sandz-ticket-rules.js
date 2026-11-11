@@ -274,7 +274,8 @@
       else {
         // Export contains company labels and subjects, not verified Account
         // Name values. Never rely on the previous AI's "Company - Sandz" guess.
-        update("Account Name","Verify exact account in Zoho Desk");
+        // Do not replace a missing verified account with non-selectable placeholder text.
+        // A customer-specific account, if known, is handled by MAUCustomerSafety.
       }
       update("SE's that can handle this ticket",decision.account.se);
       update("PM/SD of this account",decision.account.pmsd);
@@ -300,7 +301,9 @@
       if (decision.subcategory) update(subLabel,decision.subcategory);
       else if (oldSub && !DR_ALLOWED_SUBCATEGORIES.includes(oldSub)) {
         // Never pass an invalid DR incident category to Zoho.
-        fields = setField(fields,subLabel,"Verify in Zoho Desk");
+        // Unknown DR subcategories cannot be put into the Zoho dropdown.
+        // Clear the stale value; a separate warning remains in changes.
+        fields = fields.replace(new RegExp('(^[ \t]*'+subLabel+':[ \t]*)([^\r\n]*)','im'), (_,prefix)=>prefix);
         changes.push("Issue Subcategory: requires verification");
       }
       if (decision.severitySuggestion) {

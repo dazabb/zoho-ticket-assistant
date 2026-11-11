@@ -52,6 +52,27 @@
       const slow=/\b(?:slowness|slow|sluggish|latency|performance degradation|unresponsive)\b/i.test(text);
       const auth=/\b(?:access denied|permission denied|authentication failed|login failed|invalid password|invalid credentials)\b/i.test(text);
       if(slow && !auth)return 'Check Backup Retention and Performance';
+      if(auth)return 'Access Issue';
+      if(/\b(?:failed|failure|error)\b/i.test(text) && /\b(?:backup|veeam|atempo|tina|vbm)\b/i.test(text))return 'Reliability Issue';
+    }
+    if(type==='Incident' && issue==='Storage - Incident') {
+      if(/(?:\bsnapshot\b.{0,120}\b(?:destroying|hung|frozen|stuck)\b|\b(?:LDAP|NIS|DNS)\b.{0,130}\b(?:failed|fails|error|not updating)\b|\bfile system\b.{0,45}\bdegraded\b)/i.test(text))return 'Device Issue';
+      if(/\b(?:capacity above 9[05]\s*%|storage pool full|no space left)\b/i.test(text))return 'Capacity Issue';
+      if(/\b(?:severe latency|poor performance|high IOPS)\b/i.test(text))return 'Performance Issue';
+    }
+    if(type==='Incident' && issue==='Disaster Recovery - Incident') {
+      if(/\b(?:SSH failed|connection closed|connection refused|network unreachable|connection timeout|socket error)\b/i.test(text))return 'Network Issue';
+      if(/\b(?:slow replication|lag|degradation|sync timeout)\b/i.test(text))return 'Performance Issue';
+      if(/\b(?:failover failed|failover issue)\b/i.test(text))return 'FailOver Issue';
+    }
+    if(type==='Request' && /^(?:Backup Monitoring Request|DRaaS Monitoring Request|IaaS Monitoring Request|EWB MK2 and TIM Daily Report)$/.test(issue))return 'Monitoring';
+    if(type==='Request' && issue==='Backup - Request') {
+      if(/\b(?:restore|restoration)\b/i.test(text))return 'Restoration';
+      if(/\b(?:status report|daily report|health report)\b/i.test(text))return 'Status / Health Report';
+    }
+    if(type==='Request' && issue==='Disaster Recovery - Request') {
+      if(/\b(?:health report|status report|daily report)\b/i.test(text))return 'Status / Health Report';
+      if(/\b(?:test failover|dr test)\b/i.test(text))return 'Outage/FailOver Test';
     }
     return '';
   }
@@ -77,7 +98,16 @@
     if(!f['Supported Portfolio'])issues.push('Supported Portfolio needs verification');
     const rawPlatform=f['Technology/Platform']||'';
     f['Technology/Platform']=platform(rawPlatform);
-    if(!f['Technology/Platform'])issues.push('Technology/Platform needs verification');
+    if(!f['Technology/Platform']) {
+      // Only choose a known platform if it is explicit in the actual issue.
+      if(/\bDell\s*(?:EMC\s*)?Unity\b/i.test(evidence)) f['Technology/Platform']='Not Applicable';
+      else if(/\bZerto\b/i.test(evidence)) f['Technology/Platform']='Zerto';
+      else if(/\bRack\s*Ware\b/i.test(evidence)) f['Technology/Platform']='Rackware';
+      else if(/\bVeeam\b/i.test(evidence)) f['Technology/Platform']='Veeam';
+      else if(/\b(?:Atempo\s*Time\s*Navigator|\bATINA\b|\bTINA\b)/i.test(evidence)) f['Technology/Platform']='Atempo Time Navigator (ATINA)';
+      else issues.push('Technology/Platform needs verification');
+    }
+    if(!f['Supported Portfolio'] && /\bDell\s*(?:EMC\s*)?Unity\b/i.test(evidence)) f['Supported Portfolio']='Dell';
     // Never force (SI) System Integration for an MS service or vice-versa. The project context determines Solutions.
     if(f.Solutions==='SI' && f['Supported Portfolio'] && f['Supported Portfolio']!=='(SI) System Integration'){
       // SI service may have a different supported portfolio (HPE, Dell, VMware); do not overwrite.
@@ -117,7 +147,7 @@
       const key=name===sourceLabel?'Issue Sub-Category':name;
       const old=getField(updated,name);
       if (!old && !(new RegExp('(?:^|\\n)\\s*'+name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*:','i')).test(updated))continue;
-      const next=outcome.fields[key] || 'Verify in Zoho Desk';
+      const next=outcome.fields[key] || ''; // Blank unmatched dropdown; never show non-option placeholder.
       if(old!==next)updated=setField(updated,name,next);
     }
     return {text:updated,changed:updated!==String(text||''),issues:outcome.issues};
@@ -136,6 +166,6 @@
     '\nSolutions (EXACT): '+SOLUTIONS.join(' | ')+
     '\nSupported Portfolio (EXACT): '+PORTFOLIOS.join(' | ')+
     '\nTechnology/Platform (EXACT): '+PLATFORMS.join(' | ')+
-    '\nNever invent dropdown values, never borrow a subcategory from a different Issue Category, and never convert an allowed option merely because of generic wording. "Monitoring" and "Retrigger failed backup" ARE valid for particular families.\\nIf uncertain, write Verify in Zoho Desk and leave the actual dropdown blank. A valid Request is never turned into Incident based only on being escalated.';
+    '\nNever invent dropdown values, never borrow a subcategory from a different Issue Category, and never convert an allowed option merely because of generic wording. "Monitoring" and "Retrigger failed backup" ARE valid for particular families.\\nIf uncertain, leave the mapped dropdown blank instead of outputting Verify in Zoho Desk. A valid Request is never turned into Incident based only on being escalated.';
   return {CATEGORIES,SOLUTIONS,PORTFOLIOS,PLATFORMS,mode,issueCategory,subcategory,portfolio,platform,solution,validateFields,correctTicketText,correctPayload,POLICY};
 });

@@ -136,8 +136,8 @@
   // Zoho subject is NOT service-line authority. Prefer the current ticket's
   // account properties, not unrelated customer names in sidebar search results.
   function databaseService(source, generated) {
-    const account = sourceField(source,'Account Name') || sourceField(source,'Customer Company Name')
-      || pick(generated,'Customer Company Name') || pick(generated,'Account Name');
+    const account = pick(generated,'Customer Company Name') || pick(generated,'Account Name')
+      || sourceField(source,'Account Name') || sourceField(source,'Customer Company Name');
     const direct = /^\s*(?:Verify|None|-None-)\b/i.test(account) ? '' : account;
     const focus = [direct,sourceEvidence(source)].filter(Boolean).join('\n');
     const project = typeof window !== 'undefined' && window.MAUProjectDatabase;
@@ -171,14 +171,14 @@
     const severity=/^Sev[1-4]$/i.test(severityFromTicket) ?
       'Sev'+severityFromTicket.match(/[1-4]/)[0] :
       findings.stuck && findings.naming && findings.degraded ? 'Sev2' : 'Sev3';
-    const priorityBySeverity={Sev1:'High',Sev2:'Medium',Sev3:'Medium',Sev4:'Low'};
+    const priorityBySeverity={Sev1:'Urgent',Sev2:'High',Sev3:'Medium',Sev4:'Low'};
     // Dell Unity is represented in the Supported Portfolio dropdown as Dell,
     // not in the separate Technology/Platform dropdown. Its valid default
     // there is Not Applicable, never Zadara or an invalid text placeholder.
     return {findings,service:db.service,subject,severity,priority:priorityBySeverity[severity],platform:'Not Applicable',
       account:knownAccount&& !/^(?:RTVM\s+[-–]\s+Issue|Account Name)$/i.test(knownAccount)?knownAccount:'',
       existing:!!recentTicketId(source),
-      issueSubcategory:findings.capacity?'Capacity Issue':'',
+      issueSubcategory:'Device Issue', // Stuck snapshot + failed LDAP/DNS + degraded FS; capacity consumption is a symptom, not root cause.
       description:'Dell Unity 380F: snapshot stuck in destroying state; NAS LDAP/DNS naming services updates failing; file system degraded. Firmware upgrade assistance also requested.'};
   }
   function fixStorageText(raw,source) {
@@ -195,11 +195,11 @@
     update('Ticket Category','Incident');
     update('Issue Category','Storage - Incident');
     update('Description',info.description);
-    update(/(?:^|\n)\s*Issue Sub-Category:/i.test(text)?'Issue Sub-Category':'Issue Subcategory',info.issueSubcategory||'Verify in Zoho Desk');
-    update('Supported Portfolio',info.findings.vendor||'Verify in Zoho Desk');
+    update(/(?:^|\n)\s*Issue Sub-Category:/i.test(text)?'Issue Sub-Category':'Issue Subcategory',info.issueSubcategory);
+    update('Supported Portfolio',info.findings.vendor||'');
     update('Technology/Platform',info.platform); // Exact valid Zoho option; Dell remains Supported Portfolio.
     if(info.service)update('Solutions',info.service);
-    else update('Solutions','Verify in Zoho Desk');
+    // Without a confirmed matching SI/MS project row, retain any valid ticket value; never invent a service type.
     if(info.subject) update('Subject',info.subject);
     if(info.account)update('Account Name',info.account);
     // Use the same decision for all employee profiles and for autofill.
@@ -244,6 +244,7 @@
     const fixed=api?.enforceSubject(existing,db.service)||existing;
     if(existing!==fixed){text=put(text,'Subject',fixed);changes.push('Subject prefix');}
     if(pick(text,'Solutions')!==db.service){text=put(text,'Solutions',db.service);changes.push('Solutions');}
+    if(db.service==='SI' && /^Oona$/i.test(pick(text,'Customer Company Name')) && /Veeam|Replication_PRD-CDB/i.test([pick(text,'Subject'),sourceEvidence(source)].join(' ')) && pick(text,'Supported Portfolio')!=='(SI) System Integration') {text=put(text,'Supported Portfolio','(SI) System Integration');changes.push('Supported Portfolio');}
     return {text,changes};
   }
   function enforceDatabasePayload(payload,source){
@@ -254,21 +255,85 @@
     const api=typeof window!=='undefined'?window.MAUServiceLine:null;
     if(f.Subject)f.Subject=api?.enforceSubject(f.Subject,db.service)||f.Subject;
     f.Solutions=db.service;
+    if(db.service==='SI' && /^Oona$/i.test(f['Customer Company Name']||'') && /Veeam|Replication_PRD-CDB/i.test([f.Subject,sourceEvidence(source)].join(' '))) f['Supported Portfolio']='(SI) System Integration';
     if(payload.rawWorkspace)payload.rawWorkspace=enforceDatabaseText(payload.rawWorkspace,source||payload.rawWorkspace).text;
     return payload;
+  }
+  function currentTicketLifecycle(source){
+    const raw=String(source||'');
+    const reply=raw.indexOf('Reply All');
+    if(reply<0)return {existing:false,closed:false,resolved:false};
+    const header=raw.slice(Math.max(0,reply-2000),reply);
+    const after=raw.slice(reply,reply+8500);
+    const existing=/\bReply All\s*\n\s*#\s*\d{4,12}\b/i.test(raw.slice(reply,reply+120));
+    // An explicit status for the selected ticket, not an old sidebar result.
+    const closed=/(?:^|\n)\s*(?:CURRENT STATE\s*\n\s*|Status\s*\n\s*|History\s*\n\s*)Closed\s*(?:\n|$)/im.test(raw.slice(Math.max(0,reply-1400),reply+3500)) ||
+      /\bCURRENT STATE\s*\n\s*Closed\b/i.test(after);
+    const resolved=/\b(?:replication is successful|no succeeding alerts|issue (?:is )?resolved|resolved successfully)\b/i.test(after);
+    return {existing,closed:existing && closed,resolved:existing && closed && resolved};
+  }
+  function updateLifecycleText(raw,source){
+    let text=String(raw||'');
+    const lifecycle=currentTicketLifecycle(source);
+    if(!lifecycle.existing) return {text,changes:[]};
+    const changes=[];
+    const before=text;
+    if(lifecycle.closed){
+      text=text.replace(/\bNew\s+(Incident|Request)\s+Ticket\b/gi,'Existing $1 Ticket — Closed');
+      if(lifecycle.resolved){
+        text=text.replace(/(^[ \t]*Next Action\s*:\s*)([^\r\n]*)/im,'$1Existing ticket is closed; L2 confirmed the service is successful with no succeeding alerts. No new ticket or escalation unless a fresh recurrence is documented.');
+      }
+    }else{
+      text=text.replace(/\bNew\s+(Incident|Request)\s+Ticket\b/gi,'Existing $1 Ticket');
+    }
+    if(text!==before)changes.push('Existing ticket lifecycle');
+    return {text,changes};
+  }
+  function removeDropdownPlaceholders(raw){
+    let text=String(raw||''),changes=[];
+    for(const name of ['Issue Category','Issue Subcategory','Issue Sub-Category','Supported Portfolio','Technology/Platform','Solutions']){
+      const old=pick(text,name);
+      if(/^Verify(?:\s+in\s+Zoho\s+Desk)?\b/i.test(old)){
+        text=put(text,name,'');changes.push('Unverified '+name+' left blank');
+      }
+    }
+    // Severity/Priority are also Zoho dropdowns. Replace placeholders with
+    // deterministic low-impact fallback only when ticket type supports it;
+    // otherwise blank for manual review rather than fabricate an impact level.
+    let severity=pick(text,'Severity');
+    if(/^Verify\b/i.test(severity)){
+      const type=pick(text,'Ticket Category');
+      const isLowRiskRequest=type==='Request' && !/\b(?:production down|outage|major degradation|service unavailable)\b/i.test([pick(text,'Description'),pick(text,'Subject')].join(' '));
+      severity=isLowRiskRequest?'Sev4':'';
+      text=put(text,'Severity',severity);changes.push('Severity placeholder removed');
+    }
+    const priority=pick(text,'Priority');
+    if(/^Verify\b/i.test(priority)){
+      const order={Sev1:'Urgent',Sev2:'High',Sev3:'Medium',Sev4:'Low'};
+      text=put(text,'Priority',order[severity]||'');changes.push('Priority placeholder removed');
+    }
+    return {text,changes};
   }
   function correctedText(text,source){
     const first=earlierFixZohoText(text,source);
     const last=fixStorageText(first.text,source);
     const service=enforceDatabaseText(last.text,source);
-    return {text:service.text,changes:[...first.changes,...last.changes,...service.changes]};
+    const lifecycle=updateLifecycleText(service.text,source);
+    const clean=removeDropdownPlaceholders(lifecycle.text);
+    return {text:clean.text,changes:[...first.changes,...last.changes,...service.changes,...lifecycle.changes,...clean.changes]};
   }
   function correctedPayload(payload,source){
     earlierFixPayload(payload,source);
     fixStoragePayload(payload,source);
-    return enforceDatabasePayload(payload,source);
+    enforceDatabasePayload(payload,source);
+    if(payload?.fields){
+      for(const name of ['Issue Category','Issue Sub-Category','Supported Portfolio','Technology/Platform','Solutions','Severity Level','Priority']){
+        if(/^Verify(?:\s+in\s+Zoho\s+Desk)?\b/i.test(String(payload.fields[name]||'')))payload.fields[name]='';
+      }
+    }
+    return payload;
   }
   const POLICY='BACKUP INCIDENT FINAL CONSISTENCY: If the current backup job FAILED because an agent is unreachable (TN_ERR_CONNECT_SERV), select Reliability Issue, not Access Issue. Access Issue means confirmed permissions, login or authentication errors; an unreachable backup agent does not establish a credential problem. When Atempo Time Navigator, ATINA or its TN_ERR_CONNECT_SERV signature is evidenced, use the exact Zoho Technology/Platform option Atempo Time Navigator (ATINA). Never describe recommended checks as already completed. Do not infer a cause from the error message alone.';
-  const STORAGE_POLICY='MIXED STORAGE TICKET FINAL VALIDATION: Treat multiple existing Dell Unity storage failures (stuck snapshot, LDAP/DNS update failure, degraded file system) as an Incident even when the customer also requests a future firmware upgrade. Storage - Incident is the issue family. Capacity Issue is a possible valid subcategory when the stuck snapshot consumes documented storage capacity; never invent unsupported dropdowns. Dell Unity is a product, not Zadara. The Technology/Platform dropdown has no Dell option: select the exact valid Not Applicable option and keep Dell under Supported Portfolio; never choose Zadara for Dell Unity. Use the matching customer-project row in the embedded SI/MS DATABASE for Solutions and subject prefix (RTVM Unity project is SI), even if an existing Zoho subject uses MSDCO. Do not infer service type from generic maintenance, firmware or configuration words. Apply the severity matrix consistently: where the current Dell Unity ticket documents a blocked snapshot, failing naming services and degraded file system together, select Sev2 with Medium priority; for an isolated issue with no wider degradation, select Sev3 with Medium priority. Respect a valid explicit source severity. Do not infer an outage or root cause. Avoid claiming troubleshooting was performed.';
-  return {decide,fixZohoText:correctedText,fixPayload:correctedPayload,storageIncident,currentZohoSubject,validatedStorageResult,databaseService,POLICY:POLICY+'\n'+STORAGE_POLICY};
+  const STORAGE_POLICY='MIXED STORAGE TICKET FINAL VALIDATION: Existing Dell Unity stuck snapshot, LDAP/DNS update failure, and degraded filesystem are a Storage - Incident even if firmware upgrade assistance is requested. Device Issue is the allowed subcategory for the described multiple operational symptoms; capacity consumption alone does not prove a full-pool capacity incident. Choose Sev2 / High for three concurrent degraded functions unless supplied verified impact justifies a different level; isolated storage errors can be Sev3 / Medium. Dell is Supported Portfolio. Technology/Platform is the valid dropdown Not Applicable (Dell Unity is not a listed Technology/Platform option). Solutions must follow the customer-project SI/MS database; do not guess from a vendor or subject prefix. Never display Verify in Zoho Desk for mapped dropdown fields. Never invent completed troubleshooting.';
+  return {decide,fixZohoText:correctedText,fixPayload:correctedPayload,storageIncident,currentZohoSubject,validatedStorageResult,databaseService,currentTicketLifecycle,POLICY:POLICY+'\n'+STORAGE_POLICY};
 });

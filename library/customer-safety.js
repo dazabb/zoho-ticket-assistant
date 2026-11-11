@@ -13,7 +13,9 @@
     {key:'natre',company:'National Reinsurance Corporation of the Philippines',account:'National Reinsurance Corporation of the Philippines - Sandz',subject:'NatRe',aliases:['national reinsurance corporation of the philippines','national reinsurance','natre']},
     {key:'gma',company:'GMA Network Inc.',account:'GMA Network Inc. - Sandz',subject:'GMA',aliases:['gma network','gma']},
     {key:'bcda',company:'BCDA',account:'',subject:'BCDA',aliases:['bcda']},
-    {key:'dswd',company:'DSWD',account:'',subject:'DSWD',aliases:['dswd']}
+    {key:'dswd',company:'DSWD',account:'',subject:'DSWD',aliases:['dswd']},
+    {key:'oona',company:'Oona',account:'Oona - Sandz',subject:'Oona',aliases:['oona']},
+    {key:'rtvm',company:'RTVM',account:'RTVM',subject:'RTVM',aliases:['rtvm','presidential broadcast staff - radio television malacanang']}
   ];
   const byKey=key=>CUSTOMERS.find(c=>c.key===String(key||'').toLowerCase()) || null;
   const squish=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
@@ -59,10 +61,11 @@
     const userFields=fieldValues(user);
     const ocrFields=fieldValues(ocr);
     if(selected) {
-      // The ticket's explicit account fields must not contradict the request.
-      if(userFields.some(item=>item.key!==selected.key)) return {ambiguous:true,reason:'ticket-company-disagrees-with-request'};
-      if(ocrFields.some(item=>item.key!==selected.key)) return {ambiguous:true,reason:'screenshot-company-disagrees-with-request'};
-      return {key:selected.key,customer:selected,reason:'explicit-request',strong:true};
+      // A standalone customer marker at the very START of the new user message is
+      // intentional. Zoho sidebars, forwarded requests, email CC and ticket history
+      // may contain other customers; those cannot overrule the caller's selection.
+      // Do not transfer unrelated account engineers or product routing to selected.
+      return {key:selected.key,customer:selected,reason:'explicit-request',strong:true,explicitOverride:true};
     }
 
     if(userFields.length===1)return {key:userFields[0].key,customer:userFields[0],reason:'user-ticket-field',strong:true};
@@ -106,6 +109,12 @@
     const oldEntry=CUSTOMERS.flatMap(c=>[c.subject,c.company,...c.aliases]).sort((a,b)=>b.length-a.length)
       .find(alias=>subject.toLowerCase().startsWith('sandz-msdco-'+alias.toLowerCase()+'-'));
     if(oldEntry)return subject.replace(new RegExp('^(SANDZ[-–](?:MSDCO|SI)[-–])'+oldEntry.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),(_,prefix)=>prefix+customer.subject);
+
+    // GABC store codes are part of Managed Services pasted examples; if a ticket
+    // assistant mixes one into a SANDZ subject while the user explicitly chose a
+    // different SANDZ customer, correct ONLY the customer prefix, not the issue.
+    const gabc=subject.match(/^(SANDZ[-–](?:MSDCO|SI)[-–])GABC(?:[_ -][A-Za-z0-9_]+)?[-–]([\s\S]+)$/i);
+    if(gabc)return gabc[1]+customer.subject+'-'+gabc[2];
     return subject;
   }
   function sourceField(source, label) {
@@ -125,6 +134,9 @@
     const original=String(text||'');
     if(!/(?:^|\n)\s*Customer Company Name\s*:/i.test(original) || !/(?:^|\n)\s*Subject\s*:/i.test(original))return {text:original,changes:[]};
     let corrected=original;const changes=[];
+    const priorCompany=sourceField(original,'Customer Company Name');
+    const priorMatch=fromValue(priorCompany);
+    const sourceCustomerChanged=!!priorCompany && (priorMatch ? priorMatch.key!==customerKey : squish(priorCompany)!==squish(account.company));
     function replace(label,value){
       const existing=corrected.match(new RegExp('^\\s*'+label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+':[ \\t]*(.*)$','im'));
       if(!existing)return;
@@ -144,10 +156,17 @@
     }
     const verifiedSe=sourceField(source,'Assigned Onsite Engr');
     const trustedSe={ewb:'Lery Ponce / Aeron Villanueva',bpitc:'Jhon Philip Doblado / CJ Tecson',radius:'CJ Tecson / Aeron Villanueva',natre:'CJ Tecson / EJ Remolona',gma:'CJ Tecson / EJ Remolona'};
-    const trustedPm={ewb:'Lian',bpitc:'Lian',radius:'Cha',natre:'Cha',gma:'Cha'};
+    const trustedPm={ewb:'Lian',bpitc:'Lian',radius:'Cha',natre:'Cha',gma:'Cha',monde:'Cha',oona:'Lian',bcda:'Lian',dswd:'4A - Lian / Main - Cha'};
     if(verifiedSe && !/^-?None-?$|^-$|^0$/i.test(verifiedSe)) replace("SE's that can handle this ticket",verifiedSe);
-    else replace("SE's that can handle this ticket",trustedSe[customerKey]||'Verify assigned engineer in Zoho Desk');
-    replace('PM/SD of this account',trustedPm[customerKey]||'Verify in Zoho Desk');
+    else if(customerKey==='monde' && /\bZerto\b/i.test(source))replace("SE's that can handle this ticket",'John Vincent Añis');
+    else if(trustedSe[customerKey]) replace("SE's that can handle this ticket",trustedSe[customerKey]);
+    else {
+      // No product-exact SE in the account safety table: preserve a technician
+      // supplied by the project database instead of replacing them with N/A.
+      const existing=(corrected.match(/^\s*SE's that can handle this ticket\s*:\s*(.*)$/im)||[])[1]||'';
+      if(sourceCustomerChanged || !existing.trim() || /^Verify\b/i.test(existing.trim()))replace("SE's that can handle this ticket",'N/A');
+    }
+    replace('PM/SD of this account',trustedPm[customerKey]||'N/A');
     const severity=sourceField(source,'Severity Level');
     if(/^Sev[1-4]$/i.test(severity))replace('Severity',severity);
     const priority=sourceField(source,'Priority');

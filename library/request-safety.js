@@ -62,11 +62,18 @@
     const d=determine(source) || determine(raw);let text=String(raw||'');const changes=[];
     if(!d || !/(?:^|\n)\s*Ticket Category\s*:/i.test(text))return {text,changes,decision:d};
     const desired={'Ticket Category':d.category, 'Issue Category':d.issueCategory,
-      'Issue Subcategory':'Verify in Zoho Desk','Issue Sub-Category':'Verify in Zoho Desk',
+      'Issue Subcategory':'','Issue Sub-Category':'',
       'Supported Portfolio':d.portfolio,'Technology/Platform':d.platform,'Solutions':d.solutions};
     for(const [label,value] of Object.entries(desired)) {
-      if(!value)continue;
       const old=field(text,label);
+      if (!value) {
+        // A prior Incident subcategory must not carry into an administrative Request.
+        if (/^Issue Sub-?Category$/i.test(label) && old) {
+          text=replaceField(text,label,'');
+          changes.push(label);
+        }
+        continue;
+      }
       if(old&&old!==value){text=replaceField(text,label,value);changes.push(label);}
     }
     const newText=fixNotes(text,source);

@@ -102,7 +102,7 @@
     const current=getSub(text);
     const d=choose({value:current,issueCategory:cat,ticketCategory:ticketCat,evidence:getIncidentEvidence(text,source)});
     if (!d.applies) return {text,changed:false,decision:d};
-    const displayed=d.value || 'Verify in Zoho Desk';
+    const displayed=d.value || ''; // An unresolved dropdown stays unselected; never render a non-option placeholder.
     const updated=setField(text,label,displayed);
     return {text:updated,changed:updated!==text,decision:d};
   }
@@ -120,6 +120,6 @@
     payload.subcategoryValidation=d.reason;
     return payload;
   }
-  const POLICY = `CONFIRMED ZOHO BACKUP - INCIDENT SUBCATEGORY DROPDOWN (EXACT VALUES):\n${ALLOWED.map(x=>'- '+x).join('\n')}\n- Never write Performance Issue for Backup - Incident: it is not an option.\n- If the observed issue is slow backup server processing, Restore and Archive slowness, or a performance degradation without authentication failure, use Check Backup Retention and Performance.\n- If an actual backup job failed unexpectedly, prefer Reliability Issue. For TN_ERR_CONNECT_SERV or unreachable backup agent, an AI guess of Access Issue must be corrected to Reliability Issue unless the source explicitly documents authentication/permission failure.\n- Choose Access Issue only with authentication, credentials, or permissions evidence; "cannot access Restore and Archive" accompanied by slowness is not automatically an access permission issue.\n- If uncertain, write Issue Subcategory: Verify in Zoho Desk and leave the actual Zoho dropdown unselected.\n- Never apply this list to Disaster Recovery - Incident or other Issue Categories.\n- Ticket #112374 EWB, Atempo Time Navigator 4.9.3, severe Linux backup-server slowness impacting Restore and Archive: Backup - Incident -> Check Backup Retention and Performance (recommended).`;
+  const POLICY = `CONFIRMED ZOHO BACKUP - INCIDENT SUBCATEGORY DROPDOWN (EXACT VALUES):\n${ALLOWED.map(x=>'- '+x).join('\n')}\n- Never write Performance Issue for Backup - Incident: it is not an option.\n- If the observed issue is slow backup server processing, Restore and Archive slowness, or a performance degradation without authentication failure, use Check Backup Retention and Performance.\n- If an actual backup job failed unexpectedly, prefer Reliability Issue. For TN_ERR_CONNECT_SERV or unreachable backup agent, an AI guess of Access Issue must be corrected to Reliability Issue unless the source explicitly documents authentication/permission failure.\n- Choose Access Issue only with authentication, credentials, or permissions evidence; "cannot access Restore and Archive" accompanied by slowness is not automatically an access permission issue.\n- If the evidence does not support any allowed choice, leave Issue Subcategory empty and display a separate validation warning. Never output a fake dropdown value.\n- Never apply this list to Disaster Recovery - Incident or other Issue Categories.\n- Ticket #112374 EWB, Atempo Time Navigator 4.9.3, severe Linux backup-server slowness impacting Restore and Archive: Backup - Incident -> Check Backup Retention and Performance (recommended).`;
   return {ALLOWED,isBackupIncident,choose,correctTicketText,correctPayload,POLICY};
 });
