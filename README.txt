@@ -1,16 +1,23 @@
-MAU Ticket Workspace — Serial Number fix v3.2.5
+MAU Operation Desk v3.2.5 — Monde Nissin Reporting FINAL PATCH ONLY
 
-For the main SANDZ Ticket Workspace, Zoho Serial Number remains blank.
-Do not put Solutions (MS/SI) into Serial Number.
-The Managed Services Ticket Workspace still fills its actual device serial number.
-Existing serial values on Edit Tickets are preserved rather than erased.
+Install into your existing v3.2.5 website repository:
+  reporting/monde.js
+  reporting/monde.html
 
-PATCH INSTALLATION (GitHub Pages):
-1. Replace the matching library/*.js files in your MAU repository.
-2. Replace chrome-extension/content.js and chrome-extension/manifest.json.
-3. Publish the website changes and refresh MAU.
-4. In chrome://extensions, reload the updated unpacked MAU extension.
-   Alternatively use the separately supplied MAU-Zoho-Extension-v1.6.2.zip.
-5. On a SANDZ New Ticket, confirm Serial Number is blank before submitting.
+Replace only the two matching files, republish GitHub Pages and hard refresh.
+No change to Ticket Workspace, Managed Services, or Chrome extension.
 
-Zoho is never automatically saved or submitted.
+Changes:
+- Recovery-site Status displays counts of VPGs with History Not Meeting SLA
+  and RPO Not Meeting SLA, independently of Red/Yellow alert counts.
+- Protection labels are bold and use grammatical singular/plural counts.
+- A VPG with an alert is still included in the protection-status count.
+- One Red Alert: or Yellow Alert: heading per recovery site; each affected
+  VPG appears below that heading on a separate line.
+- No redundant 'in Zerto' wording after alert counts or descriptions.
+- Preserves prior DD/MM/YYYY Monitoring Alert CSV importer fix.
+- Preserves current VPG status source of truth, latest same-severity alert
+  matching, and final alert summary counts.
+
+The imported VPG Export's Protection Status column determines whether a
+VPG is out of SLA; alert severity alone does not establish an SLA failure.
