@@ -994,113 +994,108 @@ Severity answer structure:
     return {raw:safeBody,fields,notes:notes.join("\n").trim()};
   }
 
-  // v3.2.5 advisory classification: MAU display ONLY. Never added to parsed.fields,
-  // parsed.raw, clipboard Zoho fields, workspace, extension payload, or Zoho dropdowns.
-  // The existing strict Zoho mappings remain authoritative for actual autofill.
+  // v3.2.5 shared MAU advisory catalog. Customer-agnostic, fixed names and IDs:
+  // equivalent issues from different clients and products resolve to ONE label pair.
+  // Never passed to Zoho, copied to clipboard, or added to the ticket payload.
+  const MAU_ADVISORY_CATALOG = Object.freeze({
+    license:              Object.freeze({id:'LIC-01',category:'Software & Licensing',subcategory:'License Management'}),
+    firmware:             Object.freeze({id:'INF-01',category:'Infrastructure',subcategory:'Firmware Upgrade'}),
+    performance:          Object.freeze({id:'INF-02',category:'Infrastructure',subcategory:'Performance Degradation'}),
+    snapshot:             Object.freeze({id:'STO-01',category:'Storage',subcategory:'Snapshot Lifecycle Issue'}),
+    nasDirectory:         Object.freeze({id:'STO-02',category:'Storage',subcategory:'NAS Directory Service Issue'}),
+    fileSystem:           Object.freeze({id:'STO-03',category:'Storage',subcategory:'File System Degradation'}),
+    storageCapacity:      Object.freeze({id:'STO-04',category:'Storage',subcategory:'Capacity Threshold'}),
+    journalCapacity:      Object.freeze({id:'DR-01',category:'Disaster Recovery',subcategory:'Journal Capacity Threshold'}),
+    historySLA:           Object.freeze({id:'DR-02',category:'Disaster Recovery',subcategory:'History Not Meeting SLA'}),
+    rpoSLA:               Object.freeze({id:'DR-03',category:'Disaster Recovery',subcategory:'RPO Not Meeting SLA'}),
+    replicationFailure:   Object.freeze({id:'DR-04',category:'Disaster Recovery',subcategory:'Replication Failure'}),
+    failover:             Object.freeze({id:'DR-05',category:'Disaster Recovery',subcategory:'Failover Issue'}),
+    restore:              Object.freeze({id:'BAK-01',category:'Backup & Restore',subcategory:'Restore Request'}),
+    restoreTest:          Object.freeze({id:'BAK-02',category:'Backup & Restore',subcategory:'Restore Test'}),
+    backupRepository:     Object.freeze({id:'BAK-03',category:'Backup & Restore',subcategory:'Backup Repository Error'}),
+    backupFailure:        Object.freeze({id:'BAK-04',category:'Backup & Restore',subcategory:'Backup Job Failure'}),
+    offload:              Object.freeze({id:'BAK-05',category:'Backup & Restore',subcategory:'Backup Storage / Offload Issue'}),
+    provisioning:         Object.freeze({id:'HW-01',category:'Hardware',subcategory:'Device Provisioning'}),
+    hardwareReplacement:  Object.freeze({id:'HW-02',category:'Hardware',subcategory:'Device Replacement / Upgrade'}),
+    connectivity:         Object.freeze({id:'NET-01',category:'Network',subcategory:'Connectivity Failure'}),
+    reporting:            Object.freeze({id:'OPS-01',category:'Service Operations',subcategory:'Status / Health Report'})
+  });
+
   function getMAUClassificationSuggestion(parsed) {
     if (!parsed || !Array.isArray(parsed.fields)) return null;
     const getField = function (name) {
-      return (parsed.fields.find(function (field) {
-        return field.name.toLowerCase() === name.toLowerCase();
-      }) || {}).value || '';
+      return String((parsed.fields.find(function (field) {
+        return String(field.name || '').toLowerCase() === name.toLowerCase();
+      }) || {}).value || '');
     };
     const summary = String(parsed.notes || '').match(/(?:^|\n)\s*Issue\/Request:\s*([^\n]+)/i);
-    const issue = [getField('Subject'), getField('Description'), summary ? summary[1] : '']
-      .filter(Boolean).join(' ').toLowerCase();
+    const subject = getField('Subject').toLowerCase();
+    const description = getField('Description').toLowerCase();
+    const issue = [subject, description, summary ? summary[1] : ''].filter(Boolean).join(' ').toLowerCase();
     if (!issue.trim()) return null;
-    const platform = getField('Technology/Platform').toLowerCase();
-    const zohoFamily = getField('Issue Category').toLowerCase();
-    const portfolio = getField('Supported Portfolio').toLowerCase();
-    const context = [issue, platform, zohoFamily, portfolio].join(' ');
+    const context = [issue, getField('Technology/Platform'), getField('Issue Category'), getField('Supported Portfolio')].join(' ').toLowerCase();
+    const matches = function (re) { return re.test(issue); };
+    const has = function (re) { return re.test(context); };
+    const suggest = function (key) { return MAU_ADVISORY_CATALOG[key] || null; };
     const isRequest = /\brequest\b/i.test(getField('Ticket Category'));
-    const matches = function (pattern) { return pattern.test(issue); };
-    const has = function (pattern) { return pattern.test(context); };
-    const recommend = function (category, subcategory, reason) {
-      return {category:category, subcategory:subcategory, reason:reason || ''};
-    };
+    const isDR = has(/\b(?:zerto|zvm|vpg|rackware|rack\s?ware|replicat\w*|replica|draas|disaster recovery|failover)\b/i);
+    const isBackup = has(/\b(?:backup|restore|recovery point|veeam|atempo|tina|baas|repository)\b/i);
+    const isStorage = has(/\b(?:storage|nas|san|unity|powerstore|zad(ar)?a|filesystem|file system|snapshot|disk|vpsa)\b/i);
 
-    // Prefer the actual reported symptom/activity, not incidental platform or generic triage.
-    if (matches(/\b(?:licen[cs]e|activation|renewal|subscription)\b/i) && has(/\b(?:zerto|zvm|zerto analytics)\b/i)) {
-      return recommend('Disaster Recovery — License Management',
-        matches(/\banalytics\b/i) ? 'ZVM License Update / Zerto Analytics Alignment' :
-        matches(/\brenew/i) ? 'ZVM License Renewal' : 'ZVM License Update',
-        'Zerto/ZVM licensing activity');
-    }
-    if (matches(/\b(?:licen[cs]e|activation|renewal|subscription)\b/i)) {
-      return recommend('Software / Platform — License Management',
-        matches(/\brenew/i) ? 'License Renewal' : matches(/\bactivat/i) ? 'License Activation' : 'License Update / Entitlement Change',
-        'Licensing activity');
-    }
-    if (matches(/\b(?:firmware|bios)\b/i) && matches(/\b(?:updat|upgrad|install|patch)\b/i)) {
-      return recommend('Infrastructure — Firmware Lifecycle', 'Firmware Upgrade / Compatibility Review', 'Firmware change request');
-    }
-    if (matches(/\b(?:snapshot|checkpoint)\b/i) && matches(/\b(?:destroying|stuck|hung|frozen|delete|deletion)\b/i)) {
-      return recommend('Storage — Snapshot Management', 'Snapshot Stuck in Deletion / Destroying State', 'Snapshot lifecycle issue');
-    }
-    if (matches(/\b(?:ldap|nis|directory service|naming service|dns)\b/i) && has(/\b(?:nas|unity|storage|file system|dell)\b/i)) {
-      return recommend('Storage — NAS Naming Services', 'LDAP / DNS Configuration or Update Failure', 'NAS directory service issue');
-    }
-    if (matches(/\b(?:degraded|unhealthy)\b/i) && matches(/\b(?:file system|filesystem|\bfs\b)\b/i)) {
-      return recommend('Storage — File System Health', 'Degraded File System', 'File system health issue');
-    }
-    if (matches(/\b(?:journal|history)\b/i) && matches(/\b(?:limit reached|exceeded|journal full|out of space|storage limit)\b/i) && has(/\b(?:zerto|vpg|replication|dr)\b/i)) {
-      return recommend('Disaster Recovery — Journal Capacity', 'Journal Limit Reached / Retention at Risk', 'Replication journal usage');
-    }
-    if (matches(/\bhistory\s+not\s+meeting\s+sla\b|journal history.*(?:below|less than)\s*75%/i) && has(/\b(?:zerto|vpg|replication|dr)\b/i)) {
-      return recommend('Disaster Recovery — SLA Compliance', 'Journal History Not Meeting SLA', 'Protection history SLA');
-    }
-    if (matches(/\brpo\s+not\s+meeting\s+sla\b|\brpo\b.*(?:exceeded|over|above|breach)/i) && has(/\b(?:zerto|vpg|replication|dr)\b/i)) {
-      return recommend('Disaster Recovery — SLA Compliance', 'RPO Not Meeting SLA', 'Replication RPO SLA');
-    }
-    if (matches(/\breplication(?=[_\s-]|$)|\bvpg\b|\bdr\b|\bfailover\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|stopp(?:ed|ing)?|disconnect(?:ed|ion|s)?|connection clos(?:ed|ure)|transfer sync|timed out)\b/i)) {
-      return recommend('Disaster Recovery — Replication Reliability',
-        matches(/connection|data transfer|network|disconnect/i) ? 'Replication Failure — Connection / Data Transfer' : 'Replication Job Failure',
-        'Replication operational failure');
-    }
-    if (matches(/\b(?:restore|restoration|recovery point)\b/i) && has(/\b(?:backup|veeam|atempo|tina|baas|restore)\b/i)) {
-      return recommend('Backup — Restore Operations',
-        matches(/test|verification|validate/i) ? 'Restore Test / Recovery Validation' : 'File / System Restore Request',
-        'Recovery/restore workflow');
-    }
-    if (matches(/\b(?:capacity tier|offload|\bs3\b|object storage)\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|unreachable|connection|capacity|full)\b/i)) {
-      return recommend('Backup — Capacity Tier / Object Storage',
-        matches(/connect|unreachable|\bs3\b/i) ? 'Capacity Tier Connection / S3 Offload Failure' : 'Capacity Tier Offload / Space Failure',
-        'Backup tier failure');
-    }
-    if (matches(/\b(?:backup|veeam|atempo|tina)\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|warnings?|missed|not complet(?:ed|ing)?|unsuccessful)\b/i)) {
-      return recommend('Backup — Job Reliability',
-        matches(/repository|metadata|vbm/i) ? 'Backup Repository / Metadata Error' : 'Backup Job Failure / Warning',
-        'Backup workflow issue');
-    }
-    if (matches(/\b(?:provision(?:ing|ed)?|deploy(?:ment|ing)?|set\s*up|ssd\s*upgrad(?:e|ing)?|cpu\s*replac(?:e|ement)?|replace\s*the\s*cpu)\b/i) && has(/\b(?:hardware|pos|desktop|device|cpu|ssd|computer)\b/i)) {
-      return recommend('Endpoint Hardware — Deployment & Provisioning',
-        matches(/replace|upgrade|ssd|cpu/i) ? 'Device Replacement / Hardware Upgrade' : 'Device Setup / POS Provisioning',
-        'Physical device service request');
-    }
-    if (matches(/\b(?:storage|nas|san|repository|disk|pool)\b/i) && matches(/\b(?:capacity|space|full|low disk|utilization)\b/i)) {
-      return recommend('Storage — Capacity Management', 'Storage Capacity / Space Pressure', 'Storage capacity symptom');
-    }
-    if (matches(/\b(?:network|ssh|dns|connection|connectivity|latency|packet loss)\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|unreach(?:able)?|down|timeout|timed out|disconnect(?:ed|ion|s)?|unstable|loss)\b/i)) {
-      return recommend('Network — Connectivity & Availability',
-        matches(/dns|name resolv/i) ? 'DNS / Name Resolution Failure' : 'Network Connectivity / Session Failure',
-        'Connectivity symptom');
-    }
-    if (matches(/\b(?:report|monitoring|health check|status report)\b/i) && (isRequest || matches(/\b(?:daily|weekly|monthly|scheduled)\b/i))) {
-      return recommend('Service Operations — Monitoring & Reporting', 'Health / Status Report Request', 'Monitoring/report activity');
-    }
-    if (matches(/\b(?:slow|lag|latency|performance|over.?utiliz|degraded)\b/i)) {
-      return recommend('Infrastructure — Performance & Reliability', 'Performance Degradation / Resource Bottleneck', 'Performance symptom');
-    }
-    return null; // Insufficient detail: do not invent a confident suggestion.
+    // Monitor/report templates (even if their embedded summaries mention historic failed
+    // hosts) should not become an incident solely because of status-table keywords.
+    // An explicitly reported live replication failure or active outage still wins.
+    const reportTitle = /\b(?:health|status|monitoring|replication)\s+(?:and\s+)?(?:status\s+)?report\b|\b(?:daily|weekly|monthly)\s+report\b/i.test(subject) ||
+      /\breplication\s+status\s+report\b|\bhealth\s+check\b/i.test(subject);
+    const failureTitle = /\b(?:sync alert\s*-\s*failed|replication\s+(?:job\s+)?fail(?:ed|ure)|production down|outage|service unavailable)\b/i.test(subject);
+    if (reportTitle && !failureTitle && (isRequest || /\breport\b/.test(subject))) return suggest('reporting');
+
+    // Symptom/activity wins over incidental vendor or customer label. Only the shared
+    // catalog names are returned; synonyms and product names never create new labels.
+    if (matches(/\b(?:licen[cs]e|licensing|subscription|entitlement|activation)\b/i) &&
+        matches(/\b(?:updat(?:e|ing)|renew(?:al|ing)?|activat(?:e|ion|ing)?|align(?:ment)?|expir(?:ed|y|ing)|install|change|request)\b/i)) return suggest('license');
+    if (matches(/\b(?:firmware|bios|uefi)\b/i) && matches(/\b(?:updat|upgrad|patch|install|assist|request)\w*/i)) return suggest('firmware');
+    if (matches(/\b(?:snapshot|checkpoint)\b/i) && matches(/\b(?:destroying|stuck|hung|frozen|delete|deletion|remov|fail)\w*/i)) return suggest('snapshot');
+    if (matches(/\b(?:ldap|nis|naming service|active directory|dns)\b/i) &&
+        has(/\b(?:nas|unity|storage|file system|filesystem)\b/i) &&
+        matches(/\b(?:ldap|nis|naming service|directory service|configur\w*|not updating|dns.{0,30}(?:update|settings))\b/i) &&
+        matches(/\b(?:fail|error|unable|timeout|old ip|not updating|update)\w*/i)) return suggest('nasDirectory');
+    if (matches(/\b(?:degraded|unhealthy|corrupt|unavailable)\b/i) && matches(/\b(?:file system|filesystem|\bfs\b)\b/i)) return suggest('fileSystem');
+    if (isDR && matches(/\b(?:journal|history)\b/i) && matches(/\b(?:limit reached|reached (?:its |the )?configured limit|exceeded|journal full|out of space|storage limit|maximum size|capacity)\b/i)) return suggest('journalCapacity');
+    if (isDR && matches(/\bhistory\s+not\s+meeting\s+sla\b|journal history.{0,70}(?:below|less than|under)\s*75\s*%/i)) return suggest('historySLA');
+    if (isDR && matches(/\brpo\s+not\s+meeting\s+sla\b|\brpo\b.{0,35}(?:exceeded|breach|above|over|not meeting)/i)) return suggest('rpoSLA');
+    if (isDR && matches(/\bfailover\b/i) && matches(/\b(?:fail|error|unable|cannot|problem|unsuccessful)\w*/i)) return suggest('failover');
+    if (isDR && matches(/\b(?:replicat\w*|\brmm\b|\bwave\b|sync\b|\bvpg\b)\b/i) &&
+        matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|stopp?(?:ed|ing)?|disconnect(?:ed|ion|s)?|connection clos(?:ed|ure)|transfer sync|time\s*out|timed out|sync alert)\b/i)) return suggest('replicationFailure');
+    if (isBackup && matches(/\b(?:restore|restoration|recovery point)\b/i) && matches(/\b(?:test|verification|validate|drill)\b/i)) return suggest('restoreTest');
+    if (isBackup && matches(/\b(?:restore|restoration|recovery point)\b/i) && (isRequest || matches(/\b(?:request|recover|retrieve|need|please)\b/i))) return suggest('restore');
+    if (isBackup && matches(/\b(?:capacity tier|offload|\bs3\b|object storage)\b/i) &&
+        matches(/\b(?:fail(?:ed|ure|ing)?|error|unreachable|connection|capacity|full)\b/i)) return suggest('offload');
+    if (isBackup && matches(/\b(?:repository|metadata|\.vbm\b|backup catalog)\b/i) &&
+        matches(/\b(?:fail(?:ed|ure|ing)?|error|unreachable|corrupt|unable|disconnected)\b/i)) return suggest('backupRepository');
+    if (isBackup && matches(/\b(?:backup|veeam|atempo|tina|job|session)\b/i) &&
+        matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|warnings?|missed|not complet(?:ed|ing)?|unsuccessful)\b/i)) return suggest('backupFailure');
+    if (matches(/\b(?:provision(?:ing|ed)?|deploy(?:ment|ing)?|set\s*up)\b/i) &&
+        has(/\b(?:hardware|pos|desktop|device|cpu|ssd|computer|terminal)\b/i)) return suggest('provisioning');
+    if (matches(/\b(?:replace|replacement|upgrade|upgrading|ssd upgrade|cpu change)\b/i) &&
+        has(/\b(?:hardware|pos|desktop|device|cpu|ssd|computer|terminal)\b/i)) return suggest('hardwareReplacement');
+    if (isStorage && matches(/\b(?:capacity|space|full|low disk|utilization|storage pool)\b/i) &&
+        matches(/\b(?:exceed|reach|critical|low|full|threshold|insufficient|nearly|above|high|out of space)\w*/i)) return suggest('storageCapacity');
+    if (matches(/\b(?:network|ssh|dns|connection|connectivity|latency|packet loss)\b/i) &&
+        matches(/\b(?:fail(?:ed|ure|ures|ing)?|unreach(?:able)?|down|timeout|timed out|disconnect(?:ed|ion|s)?|unstable|loss|refused)\b/i)) return suggest('connectivity');
+    if (matches(/\b(?:report|monitoring|health check|status report)\b/i) &&
+        (isRequest || matches(/\b(?:daily|weekly|monthly|scheduled|periodic)\b/i))) return suggest('reporting');
+    if (matches(/\b(?:slow|lag|latency|performance|over.?utiliz|degraded)\b/i)) return suggest('performance');
+    return null;
   }
 
   function renderMAUIssueAdvice(parsed) {
     const suggestion = getMAUClassificationSuggestion(parsed);
     if (!suggestion) return '';
-    // Rendered HTML only; the actual Zoho fields and copy/autofill payload are untouched.
-    return `<section class="result-section mau-advisory-only" aria-label="MAU-only issue category suggestion">
+    // Visible only in MAU. No effect on the Zoho fields, clipboard or extension.
+    return `<section class="result-section mau-advisory-only" aria-label="MAU-only standardized issue classification">
       <h3 class="result-section-title">Suggested issue classification · MAU only</h3>
-      <p style="font-size:12px;line-height:1.5;opacity:.78;margin:0 0 10px">More specific technical labels, which may not exist in your Zoho dropdowns. For reference only — not copied to Zoho or used for autofill.</p>
+      <p style="font-size:12px;line-height:1.5;opacity:.78;margin:0 0 10px">Standardized across all accounts: similar issues reuse the same category and subcategory names. Reference only — never copied to Zoho.</p>
       <div class="result-field-grid">
         <div class="result-field"><span class="result-field-name">Suggested Issue Category</span><span class="result-field-value">${escapeHtml(suggestion.category)}</span></div>
         <div class="result-field"><span class="result-field-name">Suggested Issue Subcategory</span><span class="result-field-value">${escapeHtml(suggestion.subcategory)}</span></div>
@@ -3580,6 +3575,8 @@ Severity answer structure:
     showSnackbar("Zoho Ticket Auto-Fill Assistant is ready.");
   }
 
+  // Exposes the fixed, reusable labels for review/test; does not alter Zoho.
+  window.MAUClassificationCatalog = Object.freeze({catalog:MAU_ADVISORY_CATALOG, suggest:getMAUClassificationSuggestion});
   window.getStoredTheme = getStoredTheme;
   window.getInitialWorkspaceContent = getInitialWorkspaceContent;
   window.initializeTicketAssistantRuntime = initializeRuntime;

@@ -151,7 +151,8 @@
       replace('Technology/Platform',platform);
       if(platform==='Zerto'||platform==='RackWare'){
         replace('Supported Portfolio','(DRaaS) Disaster Recovery as a Service');
-        replace('Issue Category','Disaster Recovery - Incident');
+        // Do not force an Incident category merely because the platform is Zerto or RackWare.
+        // The ticket-specific classification validator handles reports versus actual failures.
       }
     }
     const verifiedSe=sourceField(source,'Assigned Onsite Engr');
@@ -184,7 +185,7 @@
       payload.fields['Technology/Platform']=platform;
       if(platform==='Zerto'||platform==='RackWare'){
         payload.fields['Supported Portfolio']='(DRaaS) Disaster Recovery as a Service';
-        payload.fields['Issue Category']='Disaster Recovery - Incident';
+        // The platform identifies the portfolio, not the Incident/Request type.
       }
     }
     return payload;

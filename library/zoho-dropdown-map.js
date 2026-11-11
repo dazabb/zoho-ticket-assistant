@@ -56,6 +56,78 @@
     const zerto=/\b(?:Zerto|ZVM|Zerto Virtual Manager)\b/i.test(context);
     return action && zerto;
   }
+  // Account-independent handling: any enrolled customer may send a periodic
+  // report involving failed/disabled rows; that does not turn the REPORT itself
+  // into an Incident. An actual failure alert remains an Incident.
+  function reportingClassification(fields,evidence){
+    const f=fields||{};
+    const subject=String(f.Subject||'');
+    const description=String(f.Description||f['Issue Description']||'');
+    const headline=(subject+' '+description).trim();
+    // Prefer the generated/current subject and description over the many other
+    // ticket titles typically pasted from the Zoho sidebar.
+    const source=String(evidence||'');
+    const scoped=headline || source.slice(0,900);
+    const statusReport=/\b(?:server\s+)?replication\s+(?:status|health)\s+report\b|\b(?:daily|weekly|monthly|periodic)\s+(?:server\s+)?replication\s+report\b|\bserver\s+replication\s*-\s*(?:cloudany|rackware)[^\r\n]*\b(?:am|pm)\b/i.test(scoped);
+    const drStatus=/\b(?:vpg|vm)\s+(?:status|health)\s+(?:report|monitoring)\b|\bzerto\s+(?:daily|weekly|monthly|status)\s+report\b|\b(?:VM|VPG)\s+Status\s*\d{1,2}\/\d{1,2}\/\d{4}\b/i.test(scoped);
+    const backupStatus=/\bbackup\s+(?:status|health|daily|weekly|monthly)\s+report\b/i.test(scoped);
+    const storageStatus=/\bstorage\s+(?:status|health)\s+report\b/i.test(scoped);
+    const infrastructureStatus=/\b(?:iaas|infrastructure)\s+(?:status|health)\s+report\b/i.test(scoped);
+    const hasFailureTicketTitle=/\b(?:sync alert|failed\s+sync\s+job|failed\s+backup\s+job|replication\s+failure|replication\s+failed|incident)\b/i.test(subject);
+    if(hasFailureTicketTitle)return null;
+    if(statusReport)return {type:'Request',category:'Disaster Recovery - Request',subcategory:'Status / Health Report',reason:'periodic-replication-status-report'};
+    if(drStatus)return {type:'Request',category:'DRaaS Monitoring Request',subcategory:'Monitoring',reason:'dr-protection-monitoring-report'};
+    if(backupStatus)return {type:'Request',category:'Backup - Request',subcategory:'Status / Health Report',reason:'backup-status-report'};
+    if(storageStatus)return {type:'Request',category:'Storage - Request',subcategory:'Status / Health Report',reason:'storage-status-report'};
+    if(infrastructureStatus)return {type:'Request',category:'IaaS Monitoring Request',subcategory:'Monitoring',reason:'infrastructure-status-report'};
+    return null;
+  }
+  function inferCategory(type,fields,evidence){
+    const context=[fields.Subject,fields.Description,fields['Issue Description'],evidence].filter(Boolean).join(' ');
+    // Do not use a guess from a different customer or an unrelated ticket-list row.
+    const title=[fields.Subject,fields.Description].filter(Boolean).join(' ') || String(evidence||'').slice(0,450);
+    if(type==='Request'){
+      if(/\b(?:zerto|zvm)\b/i.test(context) && /\b(?:update|renew|apply|install|activate)\b[^\r\n]{0,55}\blicen[cs]e\b|\blicen[cs]e\b[^\r\n]{0,55}\b(?:update|renew|apply|install|activate)\b/i.test(title))return 'DR - Request';
+      if(/\b(?:backup|veeam|atempo|tina)\b/i.test(title) && /\b(?:restore|restoration|backup\s+policy|report|monitor|health)\b/i.test(title))return 'Backup - Request';
+      if(/\b(?:disaster recovery|replication|rackware|zerto|vpg)\b/i.test(title) && /\b(?:check|status|health|report|monitor|test|request)\b/i.test(title))return 'Disaster Recovery - Request';
+      if(/\bstorage\b/i.test(title) && /\b(?:report|monitor|health|firmware|provision|clon)\b/i.test(title))return 'Storage - Request';
+      if(/\bserver\b/i.test(title) && /\b(?:report|monitor|health|firmware)\b/i.test(title))return 'Server - Request';
+    }
+    if(type==='Incident'){
+      if(/\b(?:RMM Wave item sync alert|rackware[^\r\n]{0,80}\b(?:failed|failure)|zerto[^\r\n]{0,80}\b(?:failed|error))\b/i.test(title))return 'Disaster Recovery - Incident';
+      if(/\b(?:backup\s+job|veeam\s+job|atempo\s+job)\b[^\r\n]{0,80}\b(?:fail|error)/i.test(title))return 'Backup - Incident';
+    }
+    return '';
+  }
+  function inferSubcategory(type,issue,evidence){
+    const text=String(evidence||'');
+    if(type==='Request'){
+      const opts=CATEGORIES.Request[issue]||[];
+      const choose=v=>opts.includes(v)?v:'';
+      if(/\b(?:update|renew|apply|activate)\b[^\r\n]{0,55}\blicen[cs]e\b|\blicen[cs]e\b[^\r\n]{0,55}\b(?:update|renew|apply|activate)\b/i.test(text))return choose('Update License')||choose('License Issue/Renewal');
+      if(/\b(?:restore|restoration|file.level restore)\b/i.test(text))return choose('Restoration');
+      if(/\b(?:health|status|daily|weekly|monthly)\s+(?:check|report)|\b(?:health|status)\s+report|\bstatus\s+as\s+of/i.test(text))return choose('Status / Health Report')||choose('Monitoring')||choose('Check Replication status');
+      if(/\b(?:replication|sync)\s+(?:status|check)|\bcheck\s+replication\s+status/i.test(text))return choose('Check Replication status')||choose('Monitoring');
+      if(/\b(?:monitor|monitoring|surveillance)\b/i.test(text))return choose('Monitoring');
+      if(/\bfirmware\s+(?:upgrade|update)/i.test(text))return choose('Firmware Upgrade');
+      if(/\b(?:extract|request|collect)\s+logs?\b/i.test(text))return choose('Logs')||choose('Extract Logs');
+      if(/\b(?:migration|migrate|relocation|cutover)\b/i.test(text))return choose('Migration');
+      if(/\bprovision(?:ing)?\b/i.test(text))return choose('Provisioning');
+      if(/\bclone|cloning\b/i.test(text))return choose('Cloning');
+      if(/\b(?:dr\s+test|test\s+failover|failover\s+test)\b/i.test(text))return choose('Outage/FailOver Test');
+    }
+    if(type==='Incident'){
+      const opts=CATEGORIES.Incident[issue]||[];
+      const choose=v=>opts.includes(v)?v:'';
+      if(/\b(?:permission denied|access denied|authentication failed|login failed|invalid credentials)\b/i.test(text))return choose('Access Issue');
+      if(/\b(?:connection refused|network unreachable|connection closed|ssh (?:failed|error)|network connection failed)\b/i.test(text))return choose('Network Issue')||choose('Network Connection');
+      if(/\b(?:timeout|timed out|slow replication|high latency|replication lag)\b/i.test(text))return choose('Performance Issue')||choose('Check Backup Retention and Performance');
+      if(/\b(?:failover failed|failed failover)\b/i.test(text))return choose('FailOver Issue');
+      if(/\b(?:snapshot stuck|invalid host state|host rediscover|device fault|storage pool full|no space left)\b/i.test(text))return choose('Device Issue')||choose('Capacity Issue');
+      if(/\b(?:backup job failed|backup job failure|veeam job failed)\b/i.test(text))return choose('Reliability Issue');
+    }
+    return '';
+  }
   function pickFromEvidence(type,issue,sub,source){
     // Only well-evidenced fixes; otherwise force user verification instead of choosing first dropdown item.
     if (sub) return sub;
@@ -88,21 +160,23 @@
       if(/\b(?:health report|status report|daily report)\b/i.test(text))return 'Status / Health Report';
       if(/\b(?:test failover|dr test)\b/i.test(text))return 'Outage/FailOver Test';
     }
-    return '';
+    return inferSubcategory(type,issue,text);
   }
   function validateFields(fields,evidence=''){
     const issues=[]; const f={...fields};
-    const type=mode(f['Ticket Category']);
+    const report=reportingClassification(f,evidence);
+    const type=report?.type || mode(f['Ticket Category']);
     if(!type)issues.push('Ticket Category needs verification');
     f['Ticket Category']=type;
-    let cat=issueCategory(type,f['Issue Category']);
+    let cat=report?.category || issueCategory(type,f['Issue Category']);
+    if(!cat)cat=inferCategory(type,f,evidence);
     // An AI can omit the category or pick Disaster Recovery - Request,
     // which does NOT contain Update License. Correct only this proven scenario.
     if(isZvmLicenseUpdate(type,f,evidence) &&
        (!cat || cat==='Disaster Recovery - Request')) cat='DR - Request';
     if(!cat)issues.push('Issue Category needs verification for '+(type||'this ticket'));
     f['Issue Category']=cat;
-    const originalSub=f['Issue Sub-Category']||f['Issue Subcategory']||'';
+    const originalSub=report?.subcategory || f['Issue Sub-Category']||f['Issue Subcategory']||'';
     let sub=subcategory(type,cat,originalSub);
     const selectionEvidence=[evidence,f.Subject,f.Description,f['Issue Description'],
       f['Technology/Platform'],f['Supported Portfolio']].filter(Boolean).join(' ');
@@ -144,7 +218,7 @@
   function setField(text,label,value){
     const pat=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     const rx=new RegExp('(^[ \\t]*'+pat+':[ \\t]*)([^\\r\\n]*)','im');
-    return rx.test(text) ? String(text).replace(rx,(_,pre)=>pre+value) : String(text);
+    return rx.test(text) ? String(text).replace(rx,(_,pre)=>pre+(pre.endsWith(' ')?'':' ')+value) : String(text);
   }
   function focusedEvidence(text,source){
     const values=[getField(text,'Subject'),getField(text,'Description'),getField(text,'Issue Description'),
@@ -172,6 +246,17 @@
       const next=outcome.fields[key] || ''; // Blank unmatched dropdown; never show non-option placeholder.
       if(old!==next)updated=setField(updated,name,next);
     }
+    // Recover a missing field label as well as one with an empty value.
+    if (!/(?:^|\n)\s*Issue\s+Sub-?Category\s*:/i.test(updated) && outcome.fields['Issue Sub-Category']) {
+      updated=updated.replace(/^(\s*Issue Category\s*:[^\r\n]*)(\r?\n|$)/im,
+        (_,line,separator)=>line+'\nIssue Subcategory: '+outcome.fields['Issue Sub-Category']+separator);
+    }
+    const report=reportingClassification({Subject:getField(updated,'Subject'),Description:getField(updated,'Description')},source);
+    if(report){
+      const existing=/(?:Ticket\s*(?:No\.|Number)?\s*#?\s*\d{5,8}|#\s*\d{5,8})\b/i.test(String(source||''));
+      updated=updated.replace(/\b(?:New|Existing)\s+Incident\s+Ticket\b/gi,
+        existing?'Existing Request Ticket':'Request Ticket');
+    }
     return {text:updated,changed:updated!==String(text||''),issues:outcome.issues};
   }
   function correctPayload(payload,source){
@@ -189,5 +274,5 @@
     '\nSupported Portfolio (EXACT): '+PORTFOLIOS.join(' | ')+
     '\nTechnology/Platform (EXACT): '+PLATFORMS.join(' | ')+
     '\nNever invent dropdown values, never borrow a subcategory from a different Issue Category, and never convert an allowed option merely because of generic wording. "Monitoring" and "Retrigger failed backup" ARE valid for particular families.\\nIf uncertain, leave the mapped dropdown blank instead of outputting Verify in Zoho Desk. A valid Request is never turned into Incident based only on being escalated.';
-  return {CATEGORIES,SOLUTIONS,PORTFOLIOS,PLATFORMS,mode,issueCategory,subcategory,portfolio,platform,solution,validateFields,correctTicketText,correctPayload,POLICY};
+  return {CATEGORIES,SOLUTIONS,PORTFOLIOS,PLATFORMS,mode,issueCategory,subcategory,portfolio,platform,solution,reportingClassification,validateFields,correctTicketText,correctPayload,POLICY};
 });

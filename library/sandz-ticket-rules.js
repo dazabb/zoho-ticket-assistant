@@ -206,7 +206,18 @@
     const source = String(text || "");
     const account = resolveAccount(source);
     const rackware = isRackwareSync(source);
-    const drIncident = rackware && !/\b(?:planned|scheduled)\s+(?:test|migration|activity|maintenance)\b/i.test(source);
+    // RackWare appears in perfectly healthy periodic status reports too. The
+    // technology name alone is not proof of a replication failure. Inspect the
+    // CURRENT ticket for an alert/failure pattern before forcing Incident.
+    const primaryTitle = (source.match(/(?:^|\n)\s*Subject\s*:\s*([^\r\n]+)/i)||[])[1]
+      || source.split(/\r?\n/).map(line=>line.trim()).find(Boolean) || '';
+    const reportLike = /\b(?:replication|backup|vm|vpg)\s+(?:status|health)\s+report\b|\b(?:daily|weekly|monthly)\s+replication\s+report\b/i.test(primaryTitle)
+      || /\bSERVER REPLICATION STATUS REPORT\b/i.test(source)
+      || /\b(?:replication status as of|kindly see replication status as of)\b/i.test(source);
+    const incidentPattern = /\bRMM\s+Wave\s+item\s+sync\s+alert\s*-?\s*Failed\b|\bRSP_SYNC_[A-Z_]*ERROR\b|\bStage\s*[12]\s+Sync[^\r\n]{0,100}\b(?:failed|failure|error)\b|\b(?:Rack\s*Ware|rmm)\b[^\r\n]{0,130}\b(?:sync failed|replication failed|replication error)\b/i.test(source);
+    const explicitIncidentTitle = /\b(?:wave item sync alert|sync alert|stage [12] sync|replication failure|replication failed)\b/i.test(primaryTitle);
+    const drIncident = rackware && incidentPattern && (!reportLike || explicitIncidentTitle)
+      && !/\b(?:planned|scheduled)\s+(?:test|migration|activity|maintenance)\b/i.test(primaryTitle);
     if (!account && !rackware) return null;
     const hasTimeout = /\b(?:SYNC_ERROR_TIMEOUT|timed?\s*out|timeout|delta\s+(?:data\s+)?transfer\s+(?:of\s+)?[A-Z]:\s+failed)\b/i.test(source);
     const broadImpact = /\b(?:production\s+down|multiple\s+(?:critical\s+)?(?:hosts|systems|workloads)\s+(?:affected|failed)|service-wide|DR\s+not\s+functioning|major\s+outage|critical\s+outage)\b/i.test(source);
