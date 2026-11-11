@@ -3,7 +3,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const ORDER = ['MONDE-MAKATI', 'MONDE-AWS', 'MONDE-MK2', 'MONDE-MK2-2', 'MONDE-LenovoSTR'];
-  const state = {vpgs:null, alerts:null, fileNames:{}, images:{}, generated:false, subject:'', originalHtml:'', profileId:'guest'};
+  const state = {vpgs:null, alerts:null, alertInvalidDates:[], fileNames:{}, images:{}, generated:false, subject:'', originalHtml:'', profileId:'guest'};
   const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const localDate = () => {const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
   // The RPO column is seconds. Keep sub-minute ranges concise, but format
@@ -90,25 +90,70 @@
       level:severity(key(row,'Status'))
     })).filter(r=>r.name);
   }
-  // Zerto supplies local timestamps such as "10/15/2026 4:17:54 PM".
-  // Parse numerically rather than using locale-sensitive Date.parse.
-  function alertTime(text){
-    const m=String(text||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
-    if(!m)return NaN;
-    let hour=+m[4]; if(m[7])hour=hour%12+(m[7].toUpperCase()==='PM'?12:0);
-    if(+m[1]<1||+m[1]>12||+m[2]<1||+m[2]>31||hour>23||+m[5]>59||+m[6]>59)return NaN;
-    const date=Date.UTC(+m[3],+m[1]-1,+m[2],hour,+m[5],+(m[6]||0));
-    const check=new Date(date);
-    return check.getUTCFullYear()===+m[3]&&check.getUTCMonth()===+m[1]-1&&check.getUTCDate()===+m[2]?date:NaN;
+  // Zerto exports may use either MM/DD/YYYY (US settings) or DD/MM/YYYY
+  // (e.g. Philippine/European regional settings). Detect the dominant format
+  // using unequivocal dates across the entire file before interpreting dates
+  // like 10/11/2026, which are ambiguous on their own.
+  function alertDateOrder(rows){
+    let dayFirst=0, monthFirst=0;
+    for(const row of rows){
+      const match=key(row,'Started').match(/^(\d{1,2})[\/-](\d{1,2})[\/-]\d{4}(?:\s|$)/);
+      if(!match)continue;
+      const first=+match[1],second=+match[2];
+      if(first>12&&second<=12)dayFirst++;
+      else if(second>12&&first<=12)monthFirst++;
+    }
+    // Backward compatible with older Zerto exports if every date is ambiguous.
+    return dayFirst>monthFirst?'dmy':'mdy';
+  }
+  function validAlertDate(year,month,day,hour,minute,second){
+    if(month<1||month>12||day<1||day>31||hour<0||hour>23||minute<0||minute>59||second<0||second>59)return NaN;
+    const utc=Date.UTC(year,month-1,day,hour,minute,second);
+    const date=new Date(utc);
+    return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day?utc:NaN;
+  }
+  function alertTime(value,order='mdy'){
+    const text=String(value??'').trim();
+    // ISO 8601 timestamps with offsets retain their specified instant.
+    if(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(text)&&/(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)){
+      const stamp=Date.parse(text);
+      return Number.isFinite(stamp)?stamp:NaN;
+    }
+    const slash=text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+    const iso=text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+    if(!slash&&!iso)return NaN;
+    const parts=slash||iso;
+    let hour=+parts[4];
+    if(parts[7]){
+      if(hour<1||hour>12)return NaN;
+      hour=hour%12+(parts[7].toUpperCase()==='PM'?12:0);
+    }
+    const minute=+parts[5], second=+(parts[6]||0);
+    if(iso)return validAlertDate(+parts[1],+parts[2],+parts[3],hour,minute,second);
+    const year=+parts[3],first=+parts[1],secondPart=+parts[2];
+    const primary=order==='dmy'?[secondPart,first]:[first,secondPart];
+    const fallback=order==='dmy'?[first,secondPart]:[secondPart,first];
+    let stamp=validAlertDate(year,primary[0],primary[1],hour,minute,second);
+    // A mixed-format export can contain a few unambiguous dates from the
+    // opposite locale. Keep those when their alternate interpretation is valid.
+    if(!Number.isFinite(stamp))stamp=validAlertDate(year,fallback[0],fallback[1],hour,minute,second);
+    return stamp;
   }
   function getAlerts(csv){
-    const alerts=parseTable(csv,['Status','Entity','Description','Site','Started']).filter(r=>key(r,'Description')).map((r,i)=>({
+    const rows=parseTable(csv,['Status','Entity','Description','Site','Started']).filter(r=>key(r,'Description'));
+    const dateOrder=alertDateOrder(rows);
+    const alerts=rows.map((r,i)=>({
       level:severity(key(r,'Status')),entity:key(r,'Entity').toUpperCase(),
       description:key(r,'Description'),site:key(r,'Site'),id:key(r,'Alert ID'),
-      started:key(r,'Started'),startedTime:alertTime(key(r,'Started')),sequence:i
+      started:key(r,'Started'),startedTime:alertTime(key(r,'Started'),dateOrder),sequence:i
     }));
-    if(alerts.some(a=>a.entity==='VPG'&&!Number.isFinite(a.startedTime)))
-      throw new Error('One or more VPG alerts have an invalid Started date. A valid date is needed to identify the latest alert.');
+    const invalid=alerts.filter(a=>a.entity==='VPG'&&!Number.isFinite(a.startedTime));
+    const validVpg=alerts.some(a=>a.entity==='VPG'&&Number.isFinite(a.startedTime));
+    if(invalid.length&&!validVpg)
+      throw new Error('No VPG alert has a usable Started date. Expected DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD with a time.');
+    // Retain all rows for investigation, but never use an undated VPG alarm
+    // to claim it is the latest. Show an on-page warning for those rows.
+    state.alertInvalidDates=invalid.map(a=>({id:a.id,started:a.started,site:a.site}));
     return alerts;
   }
   // Match the full VPG name against VPG Export.csv, not the alert ID: one alert ID
@@ -127,7 +172,7 @@
   function currentVpgAlerts(){
     return (state.vpgs||[]).filter(v=>v.level==='red'||v.level==='yellow').map(vpg=>{
       const matching=(state.alerts||[]).filter(a=>
-        a.entity==='VPG'&&a.level===vpg.level&&alertVpg(a)===vpg);
+        a.entity==='VPG'&&a.level===vpg.level&&Number.isFinite(a.startedTime)&&alertVpg(a)===vpg);
       matching.sort((a,b)=>b.startedTime-a.startedTime||b.sequence-a.sequence);
       const selected=matching[0]||null;
       return {
@@ -196,6 +241,7 @@
     $('alertToggle').textContent=`Review VPG alerts — ${current.length} affected VPG${current.length===1?'':'s'}`;
     const warnings=[];
     if(!state.alerts)warnings.push('Monitoring Alert.csv is still needed.');
+    if(state.alertInvalidDates.length)warnings.push(`${state.alertInvalidDates.length} VPG alert(s) have unrecognized Started dates and were excluded from latest-alert matching.`);
     if(counts.unknown)warnings.push(`${counts.unknown} VPG status value(s) were not recognized.`);
     // Missing descriptions are handled with neutral, source-grounded wording.
     // Do not put import/diagnostic language in the client-facing report.
@@ -225,7 +271,7 @@
       }else{
         state.alerts=getAlerts(content);state.fileNames.alert=file.name;$('alertFileLabel').textContent=`✓ ${file.name} · ${state.alerts.length} alerts`;$('alertSymbol').textContent='✓';$('alertDrop').classList.add('ready');
       }
-      refresh();toast(`${file.name} loaded successfully.`);
+      refresh();toast(`${file.name} loaded successfully.${type==='alert'&&state.alertInvalidDates.length?' Check the warning for alerts with unrecognized dates.':''}`);
     }catch(err){toast(`Unable to import ${file.name}: ${err.message}`)}
   }
   for(const [id,area,type] of [['vpgInput','vpgDrop','vpg'],['alertInput','alertDrop','alert']]){
