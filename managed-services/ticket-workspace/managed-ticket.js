@@ -108,9 +108,17 @@
   function detectIntent(text, issue, existing) {
     const direct=clean(existing);
     if(/^(?:Request|Incident)$/i.test(direct)) return direct[0].toUpperCase()+direct.slice(1).toLowerCase();
+    // The selected ticket's title states the service type. A tool list or an old
+    // conversation must not change a provisioning REQUEST into an INCIDENT just
+    // because it mentions replacement of a damaged cable or an old mail failure.
+    const title=clean(text).split('\n')[0];
+    if(/^(?:request\s+for\b|service\s+request\b|\w[^\n]{0,90}\s*\|\s*request\s+for\b)/i.test(title)) return 'Request';
+    if(/^(?:incident\b|\w[^\n]{0,90}\s*\|\s*incident\b)/i.test(title)) return 'Incident';
+    if(/^hardware provisioning$/i.test(issue)) return 'Request';
     const s=(issue+' '+text).toLowerCase();
-    if(/(?:failed|failure|bugdown|black\s*screen|unresponsive|not\s+(?:booting|working|powering)|unable to|slow\s+pos|lagg(?:y|ing)|broken|damaged|crashed|error|outage|down\b)/i.test(s) &&
-       !/^hardware provisioning$/i.test(issue)) return 'Incident';
+    // Classify a service failure from the actual incident, not from ordinary
+    // planned repair tasks such as 'replace damaged cables'.
+    if(/(?:failed|failure|bugdown|black\s*screen|unresponsive|not\s+(?:booting|working|powering)|unable to|slow\s+pos|lagg(?:y|ing)|broken|crashed|error|outage|down\b)/i.test(s)) return 'Incident';
     return 'Request';
   }
   function detectCategory(issue, text, explicit) {
@@ -123,14 +131,19 @@
   function makeSubject(draft, originalSubject) {
     const serial=serialClean(draft.serialNumber);
     let subject=squeeze(originalSubject);
-    // Only trust the subject if it belongs to the selected ticket, not a list row.
-    if(subject && draft.company && !subject.toLowerCase().includes(draft.company.toLowerCase().replace(/_+/g,' ').split(' ')[0])) subject='';
+    // The selected ticket subject can use an outlet code (R-BTQ) instead of the
+    // full store name (Regatta). A matching SERIAL is stronger evidence than a
+    // missing textual customer-name match; do not throw that subject away.
+    const matchesSerial=!!(serial && subject && new RegExp('(?:^|[^A-Za-z0-9])'+escapeRe(serial)+'(?:$|[^A-Za-z0-9])','i').test(subject));
+    const companyToken=(draft.company||'').toLowerCase().replace(/_+/g,' ').split(' ')[0];
+    if(subject && draft.company && !matchesSerial && companyToken && !subject.toLowerCase().includes(companyToken)) subject='';
     if(!subject){
       const head=draft.company||draft.accountName||'Customer';
       const loc=draft.storeName||'';
       const detail=draft.issueDescription||'Support';
       const requestPrefix=draft.ticketCategory==='Request' && !/request|hardware provisioning|upgrade|installation/i.test(detail)?'Request for ':'';
-      subject=`${head} | ${requestPrefix}${loc?loc+' : ':''}${detail}`;
+      const separateSite=loc && squeeze(loc).toLowerCase()!==squeeze(head).toLowerCase();
+      subject=`${head} | ${requestPrefix}${separateSite?loc+' : ':''}${detail}`;
     }
     if(serial){
       // Add the exact device serial once and remove an unrelated trailing serial if present.
@@ -154,7 +167,7 @@
     const issue=fromZohoField(raw,'Issue Description') || fromLabeledText(original,['Issue Description','Concern','Problem','Issue','Activity']) ||
        (/(?:hardware provisioning|set up (?:one|1) set of pos|ssd upgrade|ram upgrade)/i.test(original)?'Hardware Provisioning':'') ||
        (/(?:pos.*(?:lag|slow|bugdown))/i.test(subject)?'POS Performance Issue':'');
-    const ticketCategory=detectIntent((subject||'')+' '+original,issue,fromZohoField(raw,'Ticket Category'));
+    const ticketCategory=detectIntent((subject||'')+'\n'+original,issue,fromZohoField(raw,'Ticket Category'));
     const category=detectCategory(issue,subject+' '+original,fromZohoField(raw,'Issue Category'));
     const subcat=fromZohoField(raw,'Issue Sub-Category') ||
        (category==='Hardware' && ticketCategory==='Request' && /(pos|desktop|hardware provision)/i.test(issue+' '+original)?'Desktop':'') ||
@@ -166,9 +179,12 @@
     const address=fromLabeledText(original,['Address','Site Address','Store Address','Installation Address','Work Location','Service Address']) ||
         fromZohoField(raw,'Customer Location Address') || fromLabeledText(raw,['Address','Site Address','Store Address']);
     const account=fromZohoField(raw,'Account Name') || (/(?:gabc|penshoppe|oxygen|regatta|memo)/i.test((formalCompany||'')+' '+site)?'Golden ABC, Incorporated':'');
-    const company=formalCompany || (account && !/Golden ABC/i.test(account)?account:'') ||
-       ((/\b(?:OXYGEN|OXGN)\b/i.test(site)&&/(?:GABC|goldenabc\.com)/i.test(raw))?'GABC_OXYGEN':'') ||
-       ((/PENSHOPPE/i.test(site)&&/(?:GABC|goldenabc\.com)/i.test(raw))?'GABC_PENSHOPPE':'') || '';
+    // In Managed Shared Service the CSA/customer-company field should identify
+    // the LOCATION ACTUALLY RECEIVING SERVICE. 'Store Name', 'Branch', or the
+    // 'Please do the following for ...' phrase is authoritative for that field.
+    // Keep the corporate Zoho account separately. This also works for Regatta,
+    // Hemmersbach, FMC and future stores, not just Oxygen/Penshoppe.
+    const company=site || formalCompany || (account && !/Golden ABC/i.test(account)?account:'') || '';
     const titleCaseHint=issue||(/^\s*Request/i.test(subject)?'Hardware Provisioning':'');
     const out={
       ticketNumber:(raw.match(/\bReply All\s*\n\s*#\s*(\d{4,})/i)?.[1]||''),
