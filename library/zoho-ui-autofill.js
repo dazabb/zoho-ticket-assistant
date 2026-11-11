@@ -1233,8 +1233,8 @@
     const guide=window.MAUZohoExtensionGuide;
     if (!guide || !(await guide.check())) {guide?.open();throw new Error("Connect the MAU Zoho extension, then try again.");}
     const version=String(guide.version||'');
-    if (!/^(?:[2-9]\.|1\.(?:[7-9]|[1-9][0-9])\.|1\.6\.(?:[1-9]|[1-9][0-9]+)$)/.test(version)) {
-      guide.open();throw new Error("Update the MAU Zoho extension to v1.6.1 for Managed Services autofill.");
+    if (!/^(?:[2-9]\.|1\.(?:[7-9]|[1-9][0-9])\.|1\.6\.(?:[2-9]|[1-9][0-9]+)$)/.test(version)) {
+      guide.open();throw new Error("Update the MAU Zoho extension to v1.6.2 for Managed Services autofill.");
     }
     const listing=await sendExtensionBridgeRequest(ACTION_LIST_EDIT,{});
     if (!listing || listing.ok === false) throw new Error("Could not inspect open Zoho tabs.");
