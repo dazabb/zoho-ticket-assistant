@@ -1143,9 +1143,31 @@ Severity answer structure:
     return {category:categoryWhy, subcategory:subcategoryWhy};
   }
 
+  // Show an MAU-only advisory only when it adds a DIFFERENT subcategory.
+  // A match with the mapped Zoho subcategory is not an extra suggestion:
+  // displaying the same text twice under a "MAU only" heading is misleading.
+  function sameIssueSubcategory(a, b) {
+    const normalize = function (value) {
+      return String(value || '')
+        .normalize('NFKC')
+        .toLowerCase()
+        .trim()
+        .replace(/\s*([\/\-])\s*/g, '$1')
+        .replace(/\s+/g, ' ');
+    };
+    return !!normalize(a) && normalize(a) === normalize(b);
+  }
+
   function renderMAUIssueAdvice(parsed) {
     const suggestion = getMAUClassificationSuggestion(parsed);
     if (!suggestion) return '';
+    const field = function (name) {
+      return String((parsed.fields || []).find(function (f) {
+        return String(f.name || '').toLowerCase() === name.toLowerCase();
+      })?.value || '').trim();
+    };
+    const zohoSubcategory = field('Issue Subcategory') || field('Issue Sub-Category');
+    if (sameIssueSubcategory(zohoSubcategory, suggestion.subcategory)) return '';
     const help = getMAUAdviceExplanation(parsed, suggestion);
     const categoryText = suggestion.category || 'Not set in Zoho ticket';
     const helpIcon = function (message, label) {
@@ -1154,8 +1176,8 @@ Severity answer structure:
     // The suggestion card is outside the original Zoho source textarea/payload.
     // Neither the suggestion nor its explanation is copied or sent to Zoho.
     return `<section class="result-section mau-advisory-only" aria-label="MAU-only reusable issue classification">
-      <h3 class="result-section-title">Suggested issue subcategory · MAU only</h3>
-      <p class="mau-advice-description">Keep the exact Zoho Issue Category; reuse one specific MAU-only subcategory for equivalent issues across every account. Hover over ⓘ for the reasoning.</p>
+      <h3 class="result-section-title">Additional suggested subcategory · MAU only</h3>
+      <p class="mau-advice-description">This alternative differs from the Zoho subcategory above. Zoho autofill stays unchanged. Hover over ⓘ to see the ticket evidence behind the suggestion.</p>
       <div class="result-field-grid">
         <div class="result-field" title="${escapeHtml(help.category)}"><span class="result-field-name">Issue Category (same as Zoho) ${helpIcon(help.category,'Why this category')}</span><span class="result-field-value">${escapeHtml(categoryText)}</span></div>
         <div class="result-field" title="${escapeHtml(help.subcategory)}"><span class="result-field-name">Suggested Subcategory (MAU only) ${helpIcon(help.subcategory,'Why this suggestion')}</span><span class="result-field-value">${escapeHtml(suggestion.subcategory)}</span></div>

@@ -1,32 +1,33 @@
-MAU OPERATION DESK v3.2.5 — EXISTING ZOHO CATEGORY + EXPLAINABLE SHARED SUBCATEGORY
-PATCH ONLY — November 11, 2026
+MAU OPERATION DESK v3.2.5 — NO DUPLICATE MAU-ONLY SUGGESTIONS
+Patch only — November 11, 2026
 
-Replace ONLY:
-- library/init.js
-- library/output-improvements.css
+REPLACE ONE WEBSITE FILE:
+  library/init.js
 
-WHAT CHANGED
-1. The Issue Category shown in the MAU-only suggestion panel uses the EXACT Issue Category already present in the generated Zoho ticket. Thus "Disaster Recovery - Request", "Disaster Recovery - Incident", "DR - Request", "Backup - Incident" etc. are not renamed or replaced by broad taxonomies. If no Zoho Issue Category was output, it says "Not set in Zoho ticket" rather than inventing a category.
-2. Only the more specific MAU-only Suggested Subcategory comes from the fixed shared catalog. Replication Failure, License Management, Status / Health Report etc. reuse the same names across accounts; no customer/product-specific category proliferation.
-3. Both suggested fields have hover tooltips (and keyboard-focus help icons) explaining WHY the label is being shown, citing the ticket's subject/description and the matching issue type. A "Why was this suggested?" disclosure offers a clickable/mobile-friendly explanation.
-4. "Ask a follow-up" opens the existing Troubleshooting/QA conversation and PREPARES a contextual question comparing the MAU suggestion with the actual Zoho dropdown. It does not send automatically or spend a Gemini request until the user presses Send. Users can then ask more follow-up questions.
+WHY
+The suggested subcategory card repeated the Zoho dropdown's "Status / Health Report" for Radius (and other accounts), but called the repeated value "MAU only". MAU-only means an independent advisory that is not sent to Zoho; it should not be presented as an extra classification when both values are identical.
 
-SAFETY/COMPATIBILITY
-- The suggestion panel remains MAU-only. It never edits the actual Zoho category/subcategory, Zoho payload, copied fields, Chrome extension, or account mapping.
-- The MAU suggestion is advisory and should not be interpreted as a selectable Zoho subcategory.
-- The main Ticket Workspace keeps Serial Number empty. Managed Services serial behavior is unchanged.
-- Compatible with the v3.2.5 All Accounts Issue Subcategory patch (different source files).
-- No changes to Monde reporting, client email Cc, saved sessions, or Chrome extension.
+NEW BEHAVIOR
+- If MAU's suggestion is the SAME as the mapped Zoho Issue Subcategory (ignoring capitalization, spaces around / and -, and leading/trailing spaces), hide the entire redundant advisory card. Users continue seeing the correct classification in the normal Zoho section.
+- If MAU suggests a DIFFERENT subcategory, show "Additional suggested subcategory · MAU only" with the original Zoho Issue Category, explanation tooltip, "Why was this suggested?" and "Ask a follow-up".
+- If Zoho subcategory is missing but a suggestion exists, continue showing the advisory, without filling Zoho from unsupported values.
+- The shared suggestion catalog remains reusable across all accounts.
 
-INSTALL
-1. Back up the current files in the MAU GitHub website repository.
-2. Replace the two files at the paths above, preserving the folder structure.
-3. Publish and hard refresh (Ctrl + Shift + R).
-4. Hover the info icon or open the "Why was this suggested?" disclosure; click "Ask a follow-up" to move to the Troubleshooting tab.
+SCOPE
+- No change to Zoho dropdown mappings, ticket category, severity, portfolio, or SI/MS.
+- No change to copied Zoho ticket data, client email, Monde reporting, or the extension.
+- No Chrome extension update is needed.
 
-TESTS
-- node --check on init.js: PASS
-- 35 existing reusable-suggestion cases: PASS
-- 209 existing all-account assertions covering 31 enrolled accounts: PASS
-- 138 new assertion checks for preserving exact Zoho categories, matching the same subcategory across customers, escaped tooltip text, and question handoff: PASS
-- Live deployed site / Zoho browser interaction was not tested.
+INSTALLATION
+1. Back up your website's current library/init.js.
+2. Replace library/init.js with the file in this ZIP.
+3. Republish the site, then hard refresh (Ctrl + Shift + R).
+4. Reopen the Radius status report: expect "Status / Health Report" in Zoho, with no duplicate MAU-only card.
+
+VALIDATION
+- node --check: PASS.
+- Existing all-account tests: 209 checks over 31 enrolled accounts: PASS (tested source rule compatibility).
+- Existing shared-classification tests: 35 scenarios: PASS.
+- Existing explanation and follow-up tests: 138 checks: PASS.
+- Patch-specific tests: 106 checks across 8 account scenarios: PASS.
+- Live browser deployment remains unverified; review existing Zoho ticket fields before saving.
