@@ -805,7 +805,8 @@ What you should help with:
 Field-review rules:
 - Reason from the current ticket details, current workspace, embedded mappings, allowed category/subcategory choices, supported portfolio rules, and severity matrix already available in the application context.
 - For Ticket Category, compare only Incident versus Request.
-- For Issue Category and Issue Sub-Category, compare only against allowed values from the embedded ticket rules; do not invent new categories or subcategories.
+- For ACTUAL Zoho Issue Category and Issue Sub-Category, compare only against allowed values from the embedded ticket rules; never place invented values in Zoho autofill.
+- If the user asks for a suggested, ideal, or more descriptive Issue Category / Subcategory for MAU Operation Desk, you MAY suggest a technically precise category pair even when not found in Zoho. Label it "MAU-only suggestion (not a Zoho dropdown value)" and clearly separate it from the actual allowed Zoho mapping. Base it on verified current-ticket symptoms, not assumptions. Never copy or send that MAU-only suggestion into Zoho.
 - For Supported Portfolio, compare only against the supported portfolio mapping rules already embedded.
 - For Severity Level, compare against the embedded severity matrix and explain what business impact or scope detail is driving the level.
 - For severity review questions, do not escalate just to be safe; compare the current case against the Sev2 and Sev3 criteria and recommend the level that is actually supported by the visible details.
@@ -993,6 +994,120 @@ Severity answer structure:
     return {raw:safeBody,fields,notes:notes.join("\n").trim()};
   }
 
+  // v3.2.5 advisory classification: MAU display ONLY. Never added to parsed.fields,
+  // parsed.raw, clipboard Zoho fields, workspace, extension payload, or Zoho dropdowns.
+  // The existing strict Zoho mappings remain authoritative for actual autofill.
+  function getMAUClassificationSuggestion(parsed) {
+    if (!parsed || !Array.isArray(parsed.fields)) return null;
+    const getField = function (name) {
+      return (parsed.fields.find(function (field) {
+        return field.name.toLowerCase() === name.toLowerCase();
+      }) || {}).value || '';
+    };
+    const summary = String(parsed.notes || '').match(/(?:^|\n)\s*Issue\/Request:\s*([^\n]+)/i);
+    const issue = [getField('Subject'), getField('Description'), summary ? summary[1] : '']
+      .filter(Boolean).join(' ').toLowerCase();
+    if (!issue.trim()) return null;
+    const platform = getField('Technology/Platform').toLowerCase();
+    const zohoFamily = getField('Issue Category').toLowerCase();
+    const portfolio = getField('Supported Portfolio').toLowerCase();
+    const context = [issue, platform, zohoFamily, portfolio].join(' ');
+    const isRequest = /\brequest\b/i.test(getField('Ticket Category'));
+    const matches = function (pattern) { return pattern.test(issue); };
+    const has = function (pattern) { return pattern.test(context); };
+    const recommend = function (category, subcategory, reason) {
+      return {category:category, subcategory:subcategory, reason:reason || ''};
+    };
+
+    // Prefer the actual reported symptom/activity, not incidental platform or generic triage.
+    if (matches(/\b(?:licen[cs]e|activation|renewal|subscription)\b/i) && has(/\b(?:zerto|zvm|zerto analytics)\b/i)) {
+      return recommend('Disaster Recovery — License Management',
+        matches(/\banalytics\b/i) ? 'ZVM License Update / Zerto Analytics Alignment' :
+        matches(/\brenew/i) ? 'ZVM License Renewal' : 'ZVM License Update',
+        'Zerto/ZVM licensing activity');
+    }
+    if (matches(/\b(?:licen[cs]e|activation|renewal|subscription)\b/i)) {
+      return recommend('Software / Platform — License Management',
+        matches(/\brenew/i) ? 'License Renewal' : matches(/\bactivat/i) ? 'License Activation' : 'License Update / Entitlement Change',
+        'Licensing activity');
+    }
+    if (matches(/\b(?:firmware|bios)\b/i) && matches(/\b(?:updat|upgrad|install|patch)\b/i)) {
+      return recommend('Infrastructure — Firmware Lifecycle', 'Firmware Upgrade / Compatibility Review', 'Firmware change request');
+    }
+    if (matches(/\b(?:snapshot|checkpoint)\b/i) && matches(/\b(?:destroying|stuck|hung|frozen|delete|deletion)\b/i)) {
+      return recommend('Storage — Snapshot Management', 'Snapshot Stuck in Deletion / Destroying State', 'Snapshot lifecycle issue');
+    }
+    if (matches(/\b(?:ldap|nis|directory service|naming service|dns)\b/i) && has(/\b(?:nas|unity|storage|file system|dell)\b/i)) {
+      return recommend('Storage — NAS Naming Services', 'LDAP / DNS Configuration or Update Failure', 'NAS directory service issue');
+    }
+    if (matches(/\b(?:degraded|unhealthy)\b/i) && matches(/\b(?:file system|filesystem|\bfs\b)\b/i)) {
+      return recommend('Storage — File System Health', 'Degraded File System', 'File system health issue');
+    }
+    if (matches(/\b(?:journal|history)\b/i) && matches(/\b(?:limit reached|exceeded|journal full|out of space|storage limit)\b/i) && has(/\b(?:zerto|vpg|replication|dr)\b/i)) {
+      return recommend('Disaster Recovery — Journal Capacity', 'Journal Limit Reached / Retention at Risk', 'Replication journal usage');
+    }
+    if (matches(/\bhistory\s+not\s+meeting\s+sla\b|journal history.*(?:below|less than)\s*75%/i) && has(/\b(?:zerto|vpg|replication|dr)\b/i)) {
+      return recommend('Disaster Recovery — SLA Compliance', 'Journal History Not Meeting SLA', 'Protection history SLA');
+    }
+    if (matches(/\brpo\s+not\s+meeting\s+sla\b|\brpo\b.*(?:exceeded|over|above|breach)/i) && has(/\b(?:zerto|vpg|replication|dr)\b/i)) {
+      return recommend('Disaster Recovery — SLA Compliance', 'RPO Not Meeting SLA', 'Replication RPO SLA');
+    }
+    if (matches(/\breplication(?=[_\s-]|$)|\bvpg\b|\bdr\b|\bfailover\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|stopp(?:ed|ing)?|disconnect(?:ed|ion|s)?|connection clos(?:ed|ure)|transfer sync|timed out)\b/i)) {
+      return recommend('Disaster Recovery — Replication Reliability',
+        matches(/connection|data transfer|network|disconnect/i) ? 'Replication Failure — Connection / Data Transfer' : 'Replication Job Failure',
+        'Replication operational failure');
+    }
+    if (matches(/\b(?:restore|restoration|recovery point)\b/i) && has(/\b(?:backup|veeam|atempo|tina|baas|restore)\b/i)) {
+      return recommend('Backup — Restore Operations',
+        matches(/test|verification|validate/i) ? 'Restore Test / Recovery Validation' : 'File / System Restore Request',
+        'Recovery/restore workflow');
+    }
+    if (matches(/\b(?:capacity tier|offload|\bs3\b|object storage)\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|unreachable|connection|capacity|full)\b/i)) {
+      return recommend('Backup — Capacity Tier / Object Storage',
+        matches(/connect|unreachable|\bs3\b/i) ? 'Capacity Tier Connection / S3 Offload Failure' : 'Capacity Tier Offload / Space Failure',
+        'Backup tier failure');
+    }
+    if (matches(/\b(?:backup|veeam|atempo|tina)\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|errors?|warnings?|missed|not complet(?:ed|ing)?|unsuccessful)\b/i)) {
+      return recommend('Backup — Job Reliability',
+        matches(/repository|metadata|vbm/i) ? 'Backup Repository / Metadata Error' : 'Backup Job Failure / Warning',
+        'Backup workflow issue');
+    }
+    if (matches(/\b(?:provision(?:ing|ed)?|deploy(?:ment|ing)?|set\s*up|ssd\s*upgrad(?:e|ing)?|cpu\s*replac(?:e|ement)?|replace\s*the\s*cpu)\b/i) && has(/\b(?:hardware|pos|desktop|device|cpu|ssd|computer)\b/i)) {
+      return recommend('Endpoint Hardware — Deployment & Provisioning',
+        matches(/replace|upgrade|ssd|cpu/i) ? 'Device Replacement / Hardware Upgrade' : 'Device Setup / POS Provisioning',
+        'Physical device service request');
+    }
+    if (matches(/\b(?:storage|nas|san|repository|disk|pool)\b/i) && matches(/\b(?:capacity|space|full|low disk|utilization)\b/i)) {
+      return recommend('Storage — Capacity Management', 'Storage Capacity / Space Pressure', 'Storage capacity symptom');
+    }
+    if (matches(/\b(?:network|ssh|dns|connection|connectivity|latency|packet loss)\b/i) && matches(/\b(?:fail(?:ed|ure|ures|ing|s)?|unreach(?:able)?|down|timeout|timed out|disconnect(?:ed|ion|s)?|unstable|loss)\b/i)) {
+      return recommend('Network — Connectivity & Availability',
+        matches(/dns|name resolv/i) ? 'DNS / Name Resolution Failure' : 'Network Connectivity / Session Failure',
+        'Connectivity symptom');
+    }
+    if (matches(/\b(?:report|monitoring|health check|status report)\b/i) && (isRequest || matches(/\b(?:daily|weekly|monthly|scheduled)\b/i))) {
+      return recommend('Service Operations — Monitoring & Reporting', 'Health / Status Report Request', 'Monitoring/report activity');
+    }
+    if (matches(/\b(?:slow|lag|latency|performance|over.?utiliz|degraded)\b/i)) {
+      return recommend('Infrastructure — Performance & Reliability', 'Performance Degradation / Resource Bottleneck', 'Performance symptom');
+    }
+    return null; // Insufficient detail: do not invent a confident suggestion.
+  }
+
+  function renderMAUIssueAdvice(parsed) {
+    const suggestion = getMAUClassificationSuggestion(parsed);
+    if (!suggestion) return '';
+    // Rendered HTML only; the actual Zoho fields and copy/autofill payload are untouched.
+    return `<section class="result-section mau-advisory-only" aria-label="MAU-only issue category suggestion">
+      <h3 class="result-section-title">Suggested issue classification · MAU only</h3>
+      <p style="font-size:12px;line-height:1.5;opacity:.78;margin:0 0 10px">More specific technical labels, which may not exist in your Zoho dropdowns. For reference only — not copied to Zoho or used for autofill.</p>
+      <div class="result-field-grid">
+        <div class="result-field"><span class="result-field-name">Suggested Issue Category</span><span class="result-field-value">${escapeHtml(suggestion.category)}</span></div>
+        <div class="result-field"><span class="result-field-name">Suggested Issue Subcategory</span><span class="result-field-value">${escapeHtml(suggestion.subcategory)}</span></div>
+      </div>
+    </section>`;
+  }
+
   function renderTicketReply(parsed) {
     const source = escapeHtml(parsed.raw);
     const sections = [
@@ -1011,6 +1126,7 @@ Severity answer structure:
       }
       html += `</div></section>`;
     }
+    html += renderMAUIssueAdvice(parsed);
     if (parsed.notes) html += `<section class="result-section"><div class="result-note-heading"><h3 class="result-section-title">Internal comment / Viber troubleshooting</h3><button type="button" class="result-copy" data-copy-result="notes">Copy comment</button></div><div class="result-note">${renderSupportNotes(parsed.notes)}</div><textarea class="result-notes-source" hidden>${escapeHtml(parsed.notes)}</textarea></section>`;
     html += `<details class="result-raw"><summary>View original text for Zoho autofill</summary><textarea class="result-raw-source" readonly aria-label="Original Zoho autofill text">${source}</textarea></details></section>`;
     return html;
