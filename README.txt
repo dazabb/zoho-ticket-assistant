@@ -1,30 +1,16 @@
-MAU Ticketing Field Fix — v3.0.8d
+MAU Ticket Workspace — Serial Number fix v3.2.5
 
-For the existing v3.0.8b (Database-First RTVM Fix).
-This patch does NOT include or require the cancelled Support Agent extension v3.0.8c.
+For the main SANDZ Ticket Workspace, Zoho Serial Number remains blank.
+Do not put Solutions (MS/SI) into Serial Number.
+The Managed Services Ticket Workspace still fills its actual device serial number.
+Existing serial values on Edit Tickets are preserved rather than erased.
 
-INSTALL
-1. Open your zoho-ticket-assistant repository.
-2. Replace library/ticket-consistency.js with this patch's matching file.
-3. Publish the updated GitHub Pages site.
-4. Reload MAU with Ctrl+Shift+R. Generate the ticket again to see corrected fields.
+PATCH INSTALLATION (GitHub Pages):
+1. Replace the matching library/*.js files in your MAU repository.
+2. Replace chrome-extension/content.js and chrome-extension/manifest.json.
+3. Publish the website changes and refresh MAU.
+4. In chrome://extensions, reload the updated unpacked MAU extension.
+   Alternatively use the separately supplied MAU-Zoho-Extension-v1.6.2.zip.
+5. On a SANDZ New Ticket, confirm Serial Number is blank before submitting.
 
-FOR RTVM TICKET #113329
-- Severity: Sev2 (three reported storage issues: blocked snapshot, failed naming services updates, degraded filesystem)
-- Priority: Medium (standard pairing for Sev2)
-- Supported Portfolio: Dell
-- Technology/Platform: Not Applicable (valid Zoho dropdown; Dell Unity is not a choice in that particular dropdown)
-- Solutions: SI (customer project database)
-- Subject prefix: SANDZ-SI
-- Ticket Category: Incident
-- Issue Category: Storage - Incident
-- Issue Subcategory: Capacity Issue
-
-Exact non-placeholder values are applied to the chat ticket and the Create Ticket payload.
-If a valid severity is already filled in the CURRENT Zoho ticket, it is preserved.
-The fallback for a single isolated storage issue stays Sev3; no claims of outage are invented.
-Other customers / services are not modified by this Dell Unity-specific rule.
-
-Tests: JS syntax and browser regression; variations of RTVM generated reply,
-Create Ticket fields, source-defined severity, other EWB tickets; passed.
-The Zoho web form itself was not edited or submitted in tests. Manually review before Save.
+Zoho is never automatically saved or submitted.

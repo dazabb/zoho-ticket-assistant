@@ -22,6 +22,7 @@
     ["ticketOwner", /^\s*Ticket\s+Owner\s*:\s*(.*)$/i],
     ["supportedPortfolio", /^\s*Supported\s+Portfolio\s*:\s*(.*)$/i],
     ["solutions", /^\s*Solutions\s*:\s*(.*)$/i],
+    ["serialNumber", /^\s*(?:Serial\s*(?:Number|No\.?|#)|S\/N)\s*:\s*(.*)$/i],
     ["ticketCategory", /^\s*Ticket\s+Category\s*:\s*(.*)$/i],
     ["issueCategory", /^\s*Issue\s+Category\s*:\s*(.*)$/i],
     ["issueSubCategory", /^\s*Issue\s+Sub-Category\s*:\s*(.*)$/i],
@@ -988,6 +989,9 @@
         "Issue Category": formatIssueCategory(normalizedIssueCategory, ticketCategory),
         "Issue Sub-Category": issueSubCategory,
         "Technology/Platform": fields.technologyPlatform || "",
+        // Standard SANDZ Ticket Workspace does not populate Zoho Serial Number.
+        // MS/SI are Solutions choices, never serial numbers.
+        "Serial Number": "",
         "Severity Level": severityLevel,
         "Support Level": normalizeSupportLevel(fields.supportLevel),
         "Support Agent": firstNonEmpty(profileSupportAgent, normalizeSupportAgent(fields.supportAgent)),
@@ -1004,6 +1008,8 @@
     if (window.MAUBackupSubcategories) window.MAUBackupSubcategories.correctPayload(result, workspaceText);
     if (window.MAUZohoMap) window.MAUZohoMap.correctPayload(result, workspaceText);
     if (window.MAUTicketConsistency) window.MAUTicketConsistency.fixPayload(result, workspaceText);
+    // Re-apply after all account/category correctors so no step can invent a serial.
+    result.fields["Serial Number"] = "";
     // The pictured MAU profile is the Support Agent, not a guessed AI field or previous ticket agent.
     if (profileSupportAgent) result.fields["Support Agent"] = profileSupportAgent;
     return result;

@@ -3,7 +3,7 @@
 
   const HASH_KEY = "zta";
   const PANEL_ID = "ticket-assistant-autofill-panel";
-  const SCRIPT_REVISION = "MAU-3.2.2-preserve-existing-ticket-contacts";
+  const SCRIPT_REVISION = "MAU-3.2.5-sandz-serial-blank";
   const ACTION_PREPARE_OR_FOCUS = "prepareOrFocusZohoTab";
   const ACTION_AUTOFILL = "autofillZohoTicket";
   const ACTION_LIST_EDIT = "listOpenZohoEditTickets";
@@ -27,6 +27,8 @@
   // Never alter these fields on Edit Ticket, regardless of draft identity settings.
   const PRESERVE_ON_EDIT = new Set(["Account Name", "Contact Name", "Email"]);
   const STRICT_DEFINITION_ONLY_LABELS = new Set([
+    // Solutions must map only to its exact Zoho control (not an adjacent serial input).
+    "Solutions",
     "Priority",
     "Severity Level",
     "Support Level",
@@ -39,6 +41,7 @@
     "Layout"
   ]);
   const STRICT_DROPDOWN_LABELS = new Set([
+    "Solutions",
     "Priority",
     "Severity Level",
     "Support Level",
@@ -1115,7 +1118,9 @@
   }
 
   async function clearProtectedField(label) {
-    const control = findControl(label);
+    // Do not infer the serial input using proximity to other field labels.
+    // Only an exact Serial Number selector is permitted to clear this field.
+    const control = resolveDefinitionControl(label);
     const interactive = extractInteractiveControl(control) || control;
     if (!interactive || !interactive.matches || !interactive.matches("input, textarea")) {
       return { ok: false, reason: "field not writable" };
@@ -1131,6 +1136,20 @@
     dispatchInput(interactive);
     await sleep(TEXT_POST_FILL_DELAY_MS);
     return { ok: String(interactive.value || "") === "", cleared: true };
+  }
+
+  async function enforceSandzSerial(editing, initialValue) {
+    // No serial autofill in SANDZ. On New Ticket remove any value mistakenly
+    // inserted by another dropdown. On Edit, preserve the existing serial.
+    const field = resolveDefinitionControl("Serial Number");
+    const input = extractInteractiveControl(field) || field;
+    if (!input || !input.matches || !input.matches("input, textarea")) return;
+    const wanted = editing ? String(initialValue || "") : "";
+    if (String(input.value || "") === wanted) return;
+    input.focus();
+    setNativeValue(input, wanted);
+    dispatchInput(input);
+    await sleep(TEXT_POST_FILL_DELAY_MS);
   }
 
   function findActiveDropdownPopup(triggerControl) {
@@ -1618,6 +1637,9 @@
 
   function getFieldValue(payload, label) {
     if (!payload || !payload.fields) return "";
+    // Only Managed Services needs a device serial. The standard SANDZ
+    // Ticket Workspace must never send one to Zoho, even from old drafts.
+    if (label === "Serial Number" && payload.source !== "Managed Services Ticket Workspace") return "";
     if (label === DESCRIPTION_RETRY_LABEL) {
       return String(payload.source === "Managed Services Ticket Workspace"
         ? (payload.fields[DESCRIPTION_RETRY_LABEL] || "")
@@ -1833,6 +1855,9 @@
     const unsupportedSubcategory = guardBackupSubcategory(payload);
     // Extension is a second independent validation gate; works even with stale MAU tabs.
     const isManaged=payload.source === "Managed Services Ticket Workspace";
+    // Independent of the app version, SANDZ never supplies a Serial Number.
+    // Managed Services intentionally keeps its device serial values.
+    if (!isManaged) payload.fields["Serial Number"] = "";
     const outcome=isManaged ? null : window.MAUZohoMap?.correctPayload(payload,payload.rawWorkspace||'');
     const mappingWarnings=outcome?.zohoDropdownWarnings || [];
     autofillRunning = true;
@@ -1872,6 +1897,9 @@
       panel("Zoho form is ready. Starting autofill now.", "info");
       setPanelStatus("Autofill in progress. Please do not click while fields are being filled.", "info");
       panel("Starting autofill. Please do not click while fields are being filled.", "info");
+      const existingSandzSerial = !isManaged && editing
+        ? snapshotProtectedField("Serial Number").value : "";
+      if (!isManaged) await enforceSandzSerial(editing, existingSandzSerial);
 
       let filled = 0;
       let failed = 0;
@@ -1902,6 +1930,9 @@
         if (!String(value || "").trim()) continue;
 
         const result = await fillLabel(label, value);
+        // Recheck after each Zoho interaction. A dropdown must never leak
+        // Solutions = MS into the SANDZ Serial Number field.
+        if (!isManaged) await enforceSandzSerial(editing, existingSandzSerial);
         if (result.ok) {
           filled += 1;
           if (!firstFilledAt) firstFilledAt = Date.now();
@@ -1928,6 +1959,7 @@
         }
       }
 
+      if (!isManaged) await enforceSandzSerial(editing, existingSandzSerial);
       if (editing) {
         panel("Existing Account Name, Contact Name, Email, Serial Number and ownership fields were preserved.", "info");
       }

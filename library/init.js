@@ -191,6 +191,7 @@ Required behavior:
 - Follow the severity matrix in this prompt.
 - Return deterministic structured output.
 - Use only the visible incident evidence; do not invent ticket numbers, affected hosts, customer names, engineer assignments, troubleshooting performed, or confirmed causes.
+- In SANDZ Ticket Workspace, leave Zoho Serial Number blank. MS and SI belong only in Solutions; never put MS or SI in Serial Number.
 - Keep Zoho output separate from customer-facing messages. Do not place internal triage bullets into customer emails.
 - Use normal UTF-8 punctuation. Bullets should use '- ' in the response rather than corrupted encoding symbols.
 
