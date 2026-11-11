@@ -9,7 +9,7 @@
   'use strict';
   const ATEMPO = /\batempo(?:\s+tina)?\b/i;
   const RACKWARE = /\brackware\b|\brmm\s+wave\b/i;
-  const ZERTO = /\bzerto\b|\bVPGs?\b/i;
+  const ZERTO = /\bzerto\b|\bZVM\b|\bVPGs?\b/i;
   const VEEAM = /\bveeam\b/i;
   const ADMIN_REQUEST = /\b(?:request\s+(?:for|to)|(?:please|kindly)\s+(?:assist|provide|grant|enable)|access\s+request|login\s+request|service\s+request|requesting)\b/i;
   const ADMIN_ACTION = /\b(?:login|log[ -]?in|sign[ -]?in|service account|access|permission|credentials?|approval|provision|account creation|grant|enable|reset password|password reset|account unlock|authorization)\b/i;
@@ -35,10 +35,12 @@
     const isAtempo = ATEMPO.test(relevant);
     const isDr = ZERTO.test(relevant) || RACKWARE.test(relevant);
     const isBackup = isAtempo || VEEAM.test(relevant);
+    const licenseUpdate=ZERTO.test(relevant) &&
+      /(?:\b(?:update|updating|renew|renewal|apply|install|replace|activate)\b[\s\S]{0,50}\blicen[cs]e\b|\blicen[cs]e\b[\s\S]{0,50}\b(?:update|updating|renew|renewal|apply|install|replace|activate)\b)/i.test(relevant);
     return {
       type:'request',category:'Request',
-      issueCategory:isBackup?'Backup - Request':isDr?'Disaster Recovery - Request':'',
-      subcategory:'',
+      issueCategory:licenseUpdate?'DR - Request':isBackup?'Backup - Request':isDr?'Disaster Recovery - Request':'',
+      subcategory:licenseUpdate?'Update License':'',
       portfolio:isBackup?'(BaaS) Backup as a Service':isDr?'(DRaaS) Disaster Recovery as a Service':'',
       platform:isAtempo?'Atempo TINA':ZERTO.test(relevant)?'Zerto':RACKWARE.test(relevant)?'RackWare':VEEAM.test(relevant)?'Veeam Backup & Replication':'',
       solutions:'MS',reason:isAtempo?'atempo-service-account-login':'administrative-access-request'
@@ -62,7 +64,7 @@
     const d=determine(source) || determine(raw);let text=String(raw||'');const changes=[];
     if(!d || !/(?:^|\n)\s*Ticket Category\s*:/i.test(text))return {text,changes,decision:d};
     const desired={'Ticket Category':d.category, 'Issue Category':d.issueCategory,
-      'Issue Subcategory':'','Issue Sub-Category':'',
+      'Issue Subcategory':d.subcategory,'Issue Sub-Category':d.subcategory,
       'Supported Portfolio':d.portfolio,'Technology/Platform':d.platform,'Solutions':d.solutions};
     for(const [label,value] of Object.entries(desired)) {
       const old=field(text,label);
@@ -74,7 +76,9 @@
         }
         continue;
       }
-      if(old&&old!==value){text=replaceField(text,label,value);changes.push(label);}
+      if(old!==value && text.split(/\r?\n/).some(line=>line.trimStart().toLowerCase().startsWith(label.toLowerCase()+':'))) {
+        text=replaceField(text,label,value);changes.push(label);
+      }
     }
     const newText=fixNotes(text,source);
     if(newText!==text)changes.push('Ticket note type');
@@ -88,14 +92,14 @@
     f['Ticket Category']='Request';
     if(d.issueCategory)f['Issue Category']=d.issueCategory;
     else if(/\bIncident\b/i.test(String(f['Issue Category']||'')))f['Issue Category']='';
-    f['Issue Sub-Category']=''; // no verified access-request subcategory
+    f['Issue Sub-Category']=d.subcategory||''; // ZVM license update is a verified DR - Request option
     if(d.portfolio)f['Supported Portfolio']=d.portfolio;
     else f['Supported Portfolio']=''; // don't leak a previous customer's family
     if(d.platform)f['Technology/Platform']=d.platform;
     else f['Technology/Platform']='';
     f['Solutions']='MS';
     payload.rawWorkspace=fixNotes(String(payload.rawWorkspace||''),source||'');
-    payload.classificationNote='Administrative access request; verify the valid Zoho request subcategory.';
+    payload.classificationNote=d.subcategory?'ZVM license update mapped to the confirmed DR - Request / Update License dropdown pair.':'Administrative access request; leave unresolved subcategories blank.';
     return payload;
   }
   const POLICY=`MANDATORY SANDZ ticket type validation:

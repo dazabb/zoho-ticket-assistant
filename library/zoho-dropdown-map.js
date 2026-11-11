@@ -44,6 +44,18 @@
   }
   const portfolio=value=>match(value,PORTFOLIOS);
   const solution=value=>match(value,SOLUTIONS);
+  // A Zerto Virtual Manager license update belongs to the user's exact
+  // DR - Request / Update License dropdown pair, not Disaster Recovery - Request.
+  // Require a Request, a license-update action, and Zerto/ZVM evidence.
+  function isZvmLicenseUpdate(type,fields,evidence){
+    if(type!=='Request')return false;
+    const context=[String(evidence||''),fields.Subject||'',fields.Description||'',
+      fields['Issue Description']||'',fields['Technology/Platform']||'',
+      fields['Supported Portfolio']||''].join(' ');
+    const action=/(?:\b(?:update|updating|renew|renewal|apply|install|replace|activate)\b[\s\S]{0,50}\blicen[cs]e\b|\blicen[cs]e\b[\s\S]{0,50}\b(?:update|updating|renew|renewal|apply|install|replace|activate)\b)/i.test(context);
+    const zerto=/\b(?:Zerto|ZVM|Zerto Virtual Manager)\b/i.test(context);
+    return action && zerto;
+  }
   function pickFromEvidence(type,issue,sub,source){
     // Only well-evidenced fixes; otherwise force user verification instead of choosing first dropdown item.
     if (sub) return sub;
@@ -66,6 +78,8 @@
       if(/\b(?:failover failed|failover issue)\b/i.test(text))return 'FailOver Issue';
     }
     if(type==='Request' && /^(?:Backup Monitoring Request|DRaaS Monitoring Request|IaaS Monitoring Request|EWB MK2 and TIM Daily Report)$/.test(issue))return 'Monitoring';
+    if(type==='Request' && issue==='DR - Request' &&
+        isZvmLicenseUpdate(type,{'Technology/Platform':'Zerto'},text)) return 'Update License';
     if(type==='Request' && issue==='Backup - Request') {
       if(/\b(?:restore|restoration)\b/i.test(text))return 'Restoration';
       if(/\b(?:status report|daily report|health report)\b/i.test(text))return 'Status / Health Report';
@@ -81,12 +95,20 @@
     const type=mode(f['Ticket Category']);
     if(!type)issues.push('Ticket Category needs verification');
     f['Ticket Category']=type;
-    const cat=issueCategory(type,f['Issue Category']);
+    let cat=issueCategory(type,f['Issue Category']);
+    // An AI can omit the category or pick Disaster Recovery - Request,
+    // which does NOT contain Update License. Correct only this proven scenario.
+    if(isZvmLicenseUpdate(type,f,evidence) &&
+       (!cat || cat==='Disaster Recovery - Request')) cat='DR - Request';
     if(!cat)issues.push('Issue Category needs verification for '+(type||'this ticket'));
     f['Issue Category']=cat;
     const originalSub=f['Issue Sub-Category']||f['Issue Subcategory']||'';
     let sub=subcategory(type,cat,originalSub);
-    sub=pickFromEvidence(type,cat,sub,evidence);
+    const selectionEvidence=[evidence,f.Subject,f.Description,f['Issue Description'],
+      f['Technology/Platform'],f['Supported Portfolio']].filter(Boolean).join(' ');
+    if(!sub && cat==='DR - Request' && isZvmLicenseUpdate(type,f,evidence)) sub='Update License';
+    else sub=pickFromEvidence(type,cat,sub,selectionEvidence);
+    sub=subcategory(type,cat,sub); // Never emit an option absent from this exact category.
     if(!sub && cat) issues.push('Issue Sub-Category needs verification for '+cat);
     f['Issue Sub-Category']=sub;
     delete f['Issue Subcategory'];
