@@ -1,46 +1,32 @@
-MAU Operation Desk v3.2.5 - Reusable Issue Classification Suggestions (Patch Only)
+MAU OPERATION DESK v3.2.5 — EXISTING ZOHO CATEGORY + EXPLAINABLE SHARED SUBCATEGORY
+PATCH ONLY — November 11, 2026
 
-REPLACES ONLY:
-  library/init.js
+Replace ONLY:
+- library/init.js
+- library/output-improvements.css
 
-PURPOSE
-- MAU-only advisory issue categories and subcategories now come from a single shared,
-  fixed catalog, not customer-specific or vendor-specific names.
-- Synonyms and equivalent symptoms normalize to the same canonical pair regardless of
-  customer, account or platform (e.g., Zerto, RackWare or Veeam replication failure).
-- There are 8 broad advisory issue categories and 21 defined advisory subcategories.
-- Existing suggestions in saved messages are recomputed using the shared catalog when
-  displayed in the current Ticket Workspace, so older wording does not multiply categories.
-- Incomplete or non-specific cases do not manufacture new categories.
+WHAT CHANGED
+1. The Issue Category shown in the MAU-only suggestion panel uses the EXACT Issue Category already present in the generated Zoho ticket. Thus "Disaster Recovery - Request", "Disaster Recovery - Incident", "DR - Request", "Backup - Incident" etc. are not renamed or replaced by broad taxonomies. If no Zoho Issue Category was output, it says "Not set in Zoho ticket" rather than inventing a category.
+2. Only the more specific MAU-only Suggested Subcategory comes from the fixed shared catalog. Replication Failure, License Management, Status / Health Report etc. reuse the same names across accounts; no customer/product-specific category proliferation.
+3. Both suggested fields have hover tooltips (and keyboard-focus help icons) explaining WHY the label is being shown, citing the ticket's subject/description and the matching issue type. A "Why was this suggested?" disclosure offers a clickable/mobile-friendly explanation.
+4. "Ask a follow-up" opens the existing Troubleshooting/QA conversation and PREPARES a contextual question comparing the MAU suggestion with the actual Zoho dropdown. It does not send automatically or spend a Gemini request until the user presses Send. Users can then ask more follow-up questions.
 
-EXAMPLES
-- Monde Zerto replication failed / Oona Veeam replication failed / Radius RackWare
-  sync failure -> Disaster Recovery / Replication Failure
-- Monde ZVM license update / Oona Veeam license renewal / Radius RackWare
-  license activation -> Software & Licensing / License Management
-- Radius server replication report / Monde VPG daily report / Oona Veeam
-  health report -> Service Operations / Status / Health Report
-- Dell Unity / HPE server firmware updates -> Infrastructure / Firmware Upgrade
+SAFETY/COMPATIBILITY
+- The suggestion panel remains MAU-only. It never edits the actual Zoho category/subcategory, Zoho payload, copied fields, Chrome extension, or account mapping.
+- The MAU suggestion is advisory and should not be interpreted as a selectable Zoho subcategory.
+- The main Ticket Workspace keeps Serial Number empty. Managed Services serial behavior is unchanged.
+- Compatible with the v3.2.5 All Accounts Issue Subcategory patch (different source files).
+- No changes to Monde reporting, client email Cc, saved sessions, or Chrome extension.
 
-SAFETY / COMPATIBILITY
-- Suggestions are visible ONLY in MAU Operation Desk.
-- Existing Zoho dropdown Issue Category / Issue Subcategory and ticket values stay as-is.
-- Suggestions are NOT sent to the Chrome extension, Zoho autofill, copy Zoho fields,
-  email, or the original ticket text.
-- No account databases, customer routing, serial number rules, or Monde reporting
-  logic are changed.
-- No Chrome extension update is needed.
-- Patch is compatible with the v3.2.5 All Accounts Issue Subcategory patch because
-  that patch updates other files.
+INSTALL
+1. Back up the current files in the MAU GitHub website repository.
+2. Replace the two files at the paths above, preserving the folder structure.
+3. Publish and hard refresh (Ctrl + Shift + R).
+4. Hover the info icon or open the "Why was this suggested?" disclosure; click "Ask a follow-up" to move to the Troubleshooting tab.
 
-INSTALLATION
-1. Back up the existing library/init.js from your GitHub website repository.
-2. Copy this archive's library/init.js over the existing file.
-3. Publish the site and hard refresh (Ctrl + Shift + R).
-
-TESTING
-- JavaScript syntax check passed.
-- 35 distinct classification examples passed, including cross-account synonyms.
-- 8 canonical category names and 21 unique classification IDs checked.
-- Prior 209 all-account issue classification assertions passed (31 enrolled accounts).
-- Browser/Zoho live deployment was not performed.
+TESTS
+- node --check on init.js: PASS
+- 35 existing reusable-suggestion cases: PASS
+- 209 existing all-account assertions covering 31 enrolled accounts: PASS
+- 138 new assertion checks for preserving exact Zoho categories, matching the same subcategory across customers, escaped tooltip text, and question handoff: PASS
+- Live deployed site / Zoho browser interaction was not tested.

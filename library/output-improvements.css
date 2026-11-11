@@ -68,3 +68,13 @@ html,body{max-width:100%;overflow-x:clip!important}
 .email-ticket-entry input{width:145px;max-width:100%;min-height:36px;padding:7px 10px;border:1px solid var(--mau-border);border-radius:8px;background:var(--mau-surface);color:var(--mau-text);font-size:13px}
 .email-ticket-helper{font-size:12px;color:var(--mau-muted, #64748b)}
 .result-copy:disabled{opacity:.5;cursor:not-allowed}
+
+/* v3.2.5 MAU-only classification explanations; no Zoho field changes. */
+.mau-advice-description{font-size:12px;line-height:1.55;color:var(--mau-secondary-text);margin:0 0 12px}
+.mau-advice-help{display:inline-flex;align-items:center;justify-content:center;margin-left:3px;width:16px;height:16px;border:1px solid var(--mau-border);border-radius:50%;font-size:11px;line-height:1;cursor:help;color:var(--mau-text);background:var(--mau-surface);vertical-align:middle}
+.mau-advice-help:hover,.mau-advice-help:focus-visible{outline:2px solid var(--mau-selected);outline-offset:2px}
+.mau-advice-actions{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px}
+.mau-advice-explanation{flex:1 1 260px;font-size:12px;line-height:1.6;color:var(--mau-secondary-text)}
+.mau-advice-explanation summary{cursor:pointer;font-weight:650;color:var(--mau-text)}
+.mau-advice-explanation p{margin:9px 0 0}
+.mau-advice-ask{flex:0 0 auto}

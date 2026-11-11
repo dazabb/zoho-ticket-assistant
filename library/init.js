@@ -806,7 +806,8 @@ Field-review rules:
 - Reason from the current ticket details, current workspace, embedded mappings, allowed category/subcategory choices, supported portfolio rules, and severity matrix already available in the application context.
 - For Ticket Category, compare only Incident versus Request.
 - For ACTUAL Zoho Issue Category and Issue Sub-Category, compare only against allowed values from the embedded ticket rules; never place invented values in Zoho autofill.
-- If the user asks for a suggested, ideal, or more descriptive Issue Category / Subcategory for MAU Operation Desk, you MAY suggest a technically precise category pair even when not found in Zoho. Label it "MAU-only suggestion (not a Zoho dropdown value)" and clearly separate it from the actual allowed Zoho mapping. Base it on verified current-ticket symptoms, not assumptions. Never copy or send that MAU-only suggestion into Zoho.
+- For MAU-only advisory classification, retain the current ticket's Zoho Issue Category wording EXACTLY (including - Request / - Incident). Never replace it with broad invented headings such as "Disaster Recovery", "Service Operations", or "Software & Licensing". Suggest only a reusable, more precise MAU subcategory based on ticket facts. If the Zoho Issue Category is missing, say it was not set rather than inventing a new category. This advisory is not a Zoho dropdown value and must never be copied/sent to Zoho.
+- If asked why a MAU-only subcategory was suggested, explain the symptom or request evidence and which reusable label matched. Acknowledge when details are insufficient. The actual Zoho category and subcategory remain unchanged unless the user separately asks for Zoho field review.
 - For Supported Portfolio, compare only against the supported portfolio mapping rules already embedded.
 - For Severity Level, compare against the embedded severity matrix and explain what business impact or scope detail is driving the level.
 - For severity review questions, do not escalate just to be safe; compare the current case against the Sev2 and Sev3 criteria and recommend the level that is actually supported by the visible details.
@@ -1036,7 +1037,19 @@ Severity answer structure:
     const context = [issue, getField('Technology/Platform'), getField('Issue Category'), getField('Supported Portfolio')].join(' ').toLowerCase();
     const matches = function (re) { return re.test(issue); };
     const has = function (re) { return re.test(context); };
-    const suggest = function (key) { return MAU_ADVISORY_CATALOG[key] || null; };
+    // The MAU catalog's internal family is only a matching taxonomy.
+    // Never render it as an Issue Category: preserve Zoho's existing label verbatim.
+    const suggest = function (key) {
+      const match = MAU_ADVISORY_CATALOG[key];
+      if (!match) return null;
+      return Object.freeze({
+        id:match.id,
+        category:getField('Issue Category').trim(),
+        subcategory:match.subcategory,
+        family:match.category,
+        key:key
+      });
+    };
     const isRequest = /\brequest\b/i.test(getField('Ticket Category'));
     const isDR = has(/\b(?:zerto|zvm|vpg|rackware|rack\s?ware|replicat\w*|replica|draas|disaster recovery|failover)\b/i);
     const isBackup = has(/\b(?:backup|restore|recovery point|veeam|atempo|tina|baas|repository)\b/i);
@@ -1089,17 +1102,66 @@ Severity answer structure:
     return null;
   }
 
+  // One stable explanation per reusable issue type; none of these labels is
+  // a new Zoho category. Never generate labels from a customer's company name.
+  const MAU_ADVICE_REASONS = Object.freeze({
+    license: 'The request refers to licensing, activation, renewal, or a license update.',
+    firmware: 'The request asks for a firmware, BIOS, or platform upgrade.',
+    performance: 'The report describes slowdown, latency, degraded performance, or high utilization.',
+    snapshot: 'A snapshot or checkpoint is stuck, failing to delete, or cannot complete its lifecycle.',
+    nasDirectory: 'NAS directory or naming services such as LDAP, NIS, or DNS are not updating correctly.',
+    fileSystem: 'A file system is reported degraded, unhealthy, unavailable, or corrupted.',
+    storageCapacity: 'Storage utilization or available capacity has crossed a reported limit or threshold.',
+    journalCapacity: 'A DR journal has reached or exceeded its configured capacity limit.',
+    historySLA: 'The reported DR journal history is below its SLA or the configured history threshold.',
+    rpoSLA: 'The reported recovery point objective is not meeting SLA.',
+    replicationFailure: 'The report describes a replication job or synchronization failure, connection closure, or stopped sync.',
+    failover: 'The reported problem occurs during failover or failover validation.',
+    restore: 'The request is for restoration or retrieval of backed-up data.',
+    restoreTest: 'The reported activity concerns a backup restore test or validation.',
+    backupRepository: 'The backup repository, its metadata, or its catalog reports an error.',
+    backupFailure: 'A backup job or session is reported failed, incomplete, or in error.',
+    offload: 'A backup capacity tier, object storage, or offload operation has a reported problem.',
+    provisioning: 'The request asks to provision, deploy, or set up a device or terminal.',
+    hardwareReplacement: 'The request asks for replacement or upgrade of hardware components.',
+    connectivity: 'The report describes a network, SSH, DNS, or connection failure.',
+    reporting: 'The current ticket requests a health, status, monitoring, or periodic report.'
+  });
+
+  function getMAUAdviceExplanation(parsed, suggestion) {
+    if (!suggestion) return null;
+    const field = function (name) { return String((parsed.fields || []).find(function (f) { return String(f.name).toLowerCase() === name.toLowerCase(); })?.value || '').trim(); };
+    const zohoCategory = field('Issue Category');
+    const zohoSubcategory = field('Issue Subcategory') || field('Issue Sub-Category');
+    const subject = field('Subject').replace(/^SANDZ-(?:SI|MSDCO)-[^-]*-/i, '').trim();
+    const reported = subject || field('Description') || String((parsed.notes || '').match(/Issue\/Request:\s*([^\n]+)/i)?.[1] || '').trim();
+    const evidence = reported ? reported.slice(0, 155) + (reported.length > 155 ? '…' : '') : 'the available ticket details';
+    const categoryWhy = zohoCategory
+      ? `This is the current Zoho Issue Category: "${zohoCategory}". MAU keeps the exact Zoho wording (including Request or Incident) rather than inventing a different category.`
+      : 'The Zoho Issue Category is missing from this ticket. MAU will not invent a new Issue Category; review the actual Zoho mapping.';
+    const subcategoryWhy = `Why this subcategory: ${MAU_ADVICE_REASONS[suggestion.key] || 'A known ticket symptom matches this shared classification.'} Ticket evidence: "${evidence}". The same subcategory name is reused for similar cases across accounts. This is MAU guidance only. Actual Zoho subcategory remains "${zohoSubcategory || 'not set'}".`;
+    return {category:categoryWhy, subcategory:subcategoryWhy};
+  }
+
   function renderMAUIssueAdvice(parsed) {
     const suggestion = getMAUClassificationSuggestion(parsed);
     if (!suggestion) return '';
-    // Visible only in MAU. No effect on the Zoho fields, clipboard or extension.
-    return `<section class="result-section mau-advisory-only" aria-label="MAU-only standardized issue classification">
-      <h3 class="result-section-title">Suggested issue classification · MAU only</h3>
-      <p style="font-size:12px;line-height:1.5;opacity:.78;margin:0 0 10px">Standardized across all accounts: similar issues reuse the same category and subcategory names. Reference only — never copied to Zoho.</p>
+    const help = getMAUAdviceExplanation(parsed, suggestion);
+    const categoryText = suggestion.category || 'Not set in Zoho ticket';
+    const helpIcon = function (message, label) {
+      return `<span class="mau-advice-help" tabindex="0" role="note" title="${escapeHtml(message)}" aria-label="${escapeHtml(label + ': ' + message)}">ⓘ</span>`;
+    };
+    // The suggestion card is outside the original Zoho source textarea/payload.
+    // Neither the suggestion nor its explanation is copied or sent to Zoho.
+    return `<section class="result-section mau-advisory-only" aria-label="MAU-only reusable issue classification">
+      <h3 class="result-section-title">Suggested issue subcategory · MAU only</h3>
+      <p class="mau-advice-description">Keep the exact Zoho Issue Category; reuse one specific MAU-only subcategory for equivalent issues across every account. Hover over ⓘ for the reasoning.</p>
       <div class="result-field-grid">
-        <div class="result-field"><span class="result-field-name">Suggested Issue Category</span><span class="result-field-value">${escapeHtml(suggestion.category)}</span></div>
-        <div class="result-field"><span class="result-field-name">Suggested Issue Subcategory</span><span class="result-field-value">${escapeHtml(suggestion.subcategory)}</span></div>
+        <div class="result-field" title="${escapeHtml(help.category)}"><span class="result-field-name">Issue Category (same as Zoho) ${helpIcon(help.category,'Why this category')}</span><span class="result-field-value">${escapeHtml(categoryText)}</span></div>
+        <div class="result-field" title="${escapeHtml(help.subcategory)}"><span class="result-field-name">Suggested Subcategory (MAU only) ${helpIcon(help.subcategory,'Why this suggestion')}</span><span class="result-field-value">${escapeHtml(suggestion.subcategory)}</span></div>
       </div>
+      <div class="mau-advice-actions"><details class="mau-advice-explanation"><summary>Why was this suggested?</summary><p>${escapeHtml(help.category)}</p><p>${escapeHtml(help.subcategory)}</p></details>
+      <button type="button" class="result-copy mau-advice-ask" data-ask-classification="1">Ask a follow-up</button></div>
     </section>`;
   }
 
@@ -3514,6 +3576,38 @@ Severity answer structure:
           showSnackbar('Ticket number added. You can now copy the email.');
           return;
         }
+        // Explicit MAU-only follow-up: open the existing Troubleshooting / Q&A
+        // conversation and prefill the question; do not spend a Gemini request
+        // until the user reviews it and presses Send.
+        const adviceButton = event.target.closest('[data-ask-classification]');
+        if (adviceButton) {
+          const card = adviceButton.closest('.ticket-result-card');
+          const source = card?.querySelector('.result-raw-source')?.value || '';
+          const parsed = parseTicketReply(source);
+          const suggestion = getMAUClassificationSuggestion(parsed);
+          if (!parsed || !suggestion) {
+            showSnackbar('This ticket does not have enough details for a specific suggestion.');
+            return;
+          }
+          const value = function (name) { return String(parsed.fields.find(function (f) { return String(f.name).toLowerCase() === name.toLowerCase(); })?.value || '').trim(); };
+          const customer = value('Customer Company Name');
+          const subject = value('Subject').slice(0, 170);
+          const description = value('Description').slice(0, 450);
+          const noteIssue = String(parsed.notes.match(/Issue\/Request:\s*([^\n]+)/i)?.[1] || '').slice(0, 450);
+          const zohoSub = value('Issue Subcategory') || value('Issue Sub-Category');
+          const question = [
+            customer,
+            `Regarding the current ticket${subject ? ` "${subject}"` : ''}: Explain why MAU suggests the reusable subcategory "${suggestion.subcategory}" under the existing Zoho Issue Category "${suggestion.category || 'not set'}".`,
+            description ? `Ticket description: ${description}` : '',
+            noteIssue && noteIssue !== description ? `Ticket issue summary: ${noteIssue}` : '',
+            `The actual Zoho subcategory is "${zohoSub || 'not set'}". What ticket evidence supports the suggestion? What is uncertain? Explain any difference from the Zoho dropdown mapping without changing the Zoho fields.`
+          ].filter(Boolean).join('\n\n');
+          selectOutputMode('qa');
+          const input = $('chat-input');
+          if (input) { input.value = question; input.focus(); }
+          showSnackbar('Follow-up prepared in Troubleshooting. Review it, then press Send.');
+          return;
+        }
         const emailButton = event.target.closest("[data-draft-email]");
         if (emailButton) {
           const selectEmail = document.querySelector('[data-output-mode="email"]');
@@ -3576,7 +3670,7 @@ Severity answer structure:
   }
 
   // Exposes the fixed, reusable labels for review/test; does not alter Zoho.
-  window.MAUClassificationCatalog = Object.freeze({catalog:MAU_ADVISORY_CATALOG, suggest:getMAUClassificationSuggestion});
+  window.MAUClassificationCatalog = Object.freeze({catalog:MAU_ADVISORY_CATALOG, suggest:getMAUClassificationSuggestion, explain:getMAUAdviceExplanation, render:renderMAUIssueAdvice});
   window.getStoredTheme = getStoredTheme;
   window.getInitialWorkspaceContent = getInitialWorkspaceContent;
   window.initializeTicketAssistantRuntime = initializeRuntime;
